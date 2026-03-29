@@ -1,4 +1,4 @@
-#Final Project ECEN 5713
+# Final Project ECEN 5713
 
 This is the repository for Muthuu SVS and Jack Napoli's final project. 
 This specific repo will contain the yocto image for our application.
