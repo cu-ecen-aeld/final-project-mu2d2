@@ -34,8 +34,8 @@ Yocto **cannot build natively on macOS**. Use the CROPS Docker container:
 ```bash
 docker run --rm -it \
     -v $(pwd):/workdir \
-    -v yocto-downloads:/workdir/sources/poky/build/downloads \
-    -v yocto-sstate:/workdir/sources/poky/build/sstate-cache \
+    -v yocto-downloads:/workdir/build/downloads \
+    -v yocto-sstate:/workdir/build/sstate-cache \
     crops/poky --workdir=/workdir
 ```
 
