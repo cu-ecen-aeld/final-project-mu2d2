@@ -53,10 +53,14 @@ clone_or_update "https://github.com/openembedded/meta-openembedded.git" "${OE_DI
 # --- Source the Yocto build environment ---
 # Note: oe-init-build-env changes the working directory to BUILD_DIR.
 # All paths above use absolute paths so this is safe.
+# Temporarily disable nounset — Poky's init script references unbound
+# variables (e.g., BBSERVER) that fail under 'set -u'.
 echo ""
 echo "[SETUP] Sourcing oe-init-build-env..."
+set +u
 # shellcheck disable=SC1091
 source "${POKY_DIR}/oe-init-build-env" "${BUILD_DIR}"
+set -u
 
 # --- Copy local.conf ---
 if [ ! -f "${BUILD_DIR}/conf/local.conf.orig" ] && [ -f "${BUILD_DIR}/conf/local.conf" ]; then
