@@ -33,15 +33,21 @@ Yocto **cannot build natively on macOS**. Use the CROPS Docker container:
 
 ```bash
 docker run --rm -it \
+    --platform linux/amd64 \
     -v $(pwd):/workdir \
-    -v yocto-downloads:/workdir/build/downloads \
-    -v yocto-sstate:/workdir/build/sstate-cache \
-    crops/poky --workdir=/workdir
+    -v yocto-downloads:/yocto-cache/downloads \
+    -v yocto-sstate:/yocto-cache/sstate-cache \
+    -v yocto-tmp:/yocto-cache/tmp \
+    --entrypoint "" \
+    crops/poky \
+    bash -c "sudo chown $(id -u):$(id -g) /yocto-cache/downloads /yocto-cache/sstate-cache /yocto-cache/tmp && cd /workdir && bash"
 ```
 
-3. Inside the container, follow the Linux build steps below.
+This starts an interactive shell with Docker named volumes for the Yocto build cache. The volumes provide a case-sensitive ext4 filesystem (required by Yocto — macOS APFS/HFS+ is case-insensitive) and persist downloads/sstate across container restarts.
 
-**Performance note:** Building under Docker on Apple Silicon uses Rosetta x86 emulation. Expect builds to take 2-4x longer than native Linux x86. Using named Docker volumes for downloads and sstate-cache (as shown above) avoids re-downloading on subsequent builds.
+3. Inside the container, follow the Quick Start steps below.
+
+**Performance note:** Building under Docker on Apple Silicon uses Rosetta x86 emulation. Expect builds to take 2-4x longer than native Linux x86.
 
 ## Quick Start
 
