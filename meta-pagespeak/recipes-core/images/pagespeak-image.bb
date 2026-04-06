@@ -20,5 +20,8 @@ IMAGE_INSTALL:append = " openssh-sftp-server nano"
 # Ensure all built kernel modules are installed
 IMAGE_INSTALL:append = " kernel-modules"
 
+# GPIO button IRQ driver and userspace validation test binary
+IMAGE_INSTALL:append = " pagespeak-btn"
+
 # Development extras
 EXTRA_IMAGE_FEATURES += "debug-tweaks ssh-server-dropbear"
