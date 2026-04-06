@@ -13,6 +13,7 @@ BBLAYERS ?= " \
     ##OE_DIR##/meta-oe \
     ##OE_DIR##/meta-python \
     ##OE_DIR##/meta-networking \
+    ##OE_DIR##/meta-multimedia \
     ##META_RPI_DIR## \
     ##PROJECT_DIR##/meta-pagespeak \
 "
