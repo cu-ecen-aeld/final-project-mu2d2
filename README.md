@@ -1,17 +1,101 @@
 # PageSpeak — Yocto Base Image
 
 Custom Yocto Linux image for the **PageSpeak** portable OCR-to-speech device.
-Targets Raspberry Pi 3B and Raspberry Pi 5.
+Supports **Raspberry Pi 3, 4, and 5**.
 
 **Related repos:**
 - [Project Overview & Wiki](https://github.com/cu-ecen-aeld/final-project-jsnapoli1/wiki)
 - [Application Source Code](https://github.com/cu-ecen-aeld/final-project-jsnapoli1)
 
+## Supported Hardware
+
+| Target | Machine Name | Architecture | Kernel | Status |
+|--------|--------------|--------------|--------|--------|
+| Raspberry Pi 3B/3B+ | `raspberrypi3` | ARM32 (armv7) | 5.15 | Tested |
+| Raspberry Pi 4B | `raspberrypi4` | ARM32 (armv7) | 5.15 | Supported |
+| Raspberry Pi 4B | `raspberrypi4-64` | ARM64 (aarch64) | 5.15 | Supported |
+| Raspberry Pi 5 | `raspberrypi5` | ARM64 (aarch64) | 6.1 | Tested |
+
+## Quick Start
+
+### Option 1: Using the Build Script (Recommended)
+
+The `build.sh` script handles all configuration and supports multi-target builds:
+
+```bash
+# Clone and setup
+git clone https://github.com/cu-ecen-aeld/final-project-mu2d2.git
+cd final-project-mu2d2
+./setup-build.sh
+
+# Build for a specific target
+./build.sh rpi3              # Raspberry Pi 3
+./build.sh rpi4              # Raspberry Pi 4 (32-bit)
+./build.sh rpi5              # Raspberry Pi 5
+
+# Build for all targets
+./build.sh all
+
+# Build only a specific recipe
+./build.sh rpi3 pagespeak-cam-driver
+./build.sh rpi5 pagespeak-btn
+```
+
+### Option 2: Manual BitBake Commands
+
+```bash
+# Setup
+./setup-build.sh
+cd build
+
+# Build for RPi 3 (default)
+bitbake pagespeak-image
+
+# Build for a different target
+MACHINE=raspberrypi5 bitbake pagespeak-image
+MACHINE=raspberrypi4 bitbake pagespeak-image
+```
+
+## Output Images
+
+After a successful build, SD card images are at:
+
+```
+build/tmp/deploy/images/<machine>/pagespeak-image-<machine>.rpi-sdimg
+```
+
+Examples:
+- `build/tmp/deploy/images/raspberrypi3/pagespeak-image-raspberrypi3.rpi-sdimg`
+- `build/tmp/deploy/images/raspberrypi5/pagespeak-image-raspberrypi5.rpi-sdimg`
+
 ## Prerequisites
+
+### macOS with Apple Silicon (Docker)
+
+Yocto **cannot build natively on macOS**. Use Docker:
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) with at least **8 GB RAM** and **80 GB disk**.
+
+2. Build the ARM64 Docker image (one-time setup):
+   ```bash
+   docker build -t yocto-arm64 -f Dockerfile.arm64 .
+   ```
+
+3. Use `./build.sh` which automatically runs inside Docker, or run manually:
+   ```bash
+   docker run --rm -it \
+       -v $(pwd):/workdir \
+       -v yocto-downloads:/yocto-cache/downloads \
+       -v yocto-sstate:/yocto-cache/sstate-cache \
+       -v yocto-tmp:/yocto-cache/tmp \
+       yocto-arm64:latest bash
+   ```
+
+**Note:** Docker volumes provide a case-sensitive ext4 filesystem (required by Yocto) and persist the build cache across runs.
 
 ### Linux x86_64 (Native Build)
 
-Install required host packages (Ubuntu/Debian):
+Install required packages (Ubuntu/Debian):
 
 ```bash
 sudo apt-get install gawk wget git diffstat unzip texinfo gcc build-essential \
@@ -21,68 +105,43 @@ sudo apt-get install gawk wget git diffstat unzip texinfo gcc build-essential \
 sudo locale-gen en_US.UTF-8
 ```
 
-Ensure you have at least **80 GB of free disk space** and **8 GB of RAM** (16 GB recommended).
-
-### macOS with Apple Silicon (Docker)
-
-Yocto **cannot build natively on macOS**. Use the CROPS Docker container:
-
-1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and allocate at least **8 GB RAM** and **80 GB disk** in Docker settings.
-
-2. Run the CROPS container:
-
+To build natively instead of in Docker:
 ```bash
-docker run --rm -it \
-    --platform linux/amd64 \
-    -v $(pwd):/workdir \
-    -v yocto-downloads:/yocto-cache/downloads \
-    -v yocto-sstate:/yocto-cache/sstate-cache \
-    -v yocto-tmp:/yocto-cache/tmp \
-    --entrypoint "" \
-    crops/poky \
-    bash -c "sudo chown $(id -u):$(id -g) /yocto-cache/downloads /yocto-cache/sstate-cache /yocto-cache/tmp && cd /workdir && bash"
+DOCKER=0 ./build.sh rpi3
 ```
 
-This starts an interactive shell with Docker named volumes for the Yocto build cache. The volumes provide a case-sensitive ext4 filesystem (required by Yocto — macOS APFS/HFS+ is case-insensitive) and persist downloads/sstate across container restarts.
+**Requirements:** 80 GB free disk space, 8 GB RAM (16 GB recommended).
 
-3. Inside the container, follow the Quick Start steps below.
+## Custom Kernel Modules
 
-**Performance note:** Building under Docker on Apple Silicon uses Rosetta x86 emulation. Expect builds to take 2-4x longer than native Linux x86.
+PageSpeak includes two custom kernel modules:
 
-## Quick Start
+### pagespeak-cam-driver
 
-### 1. Clone the repository
+Character device driver for USB webcam frame capture via `/dev/pagespeak-cam`.
 
+| Feature | Description |
+|---------|-------------|
+| Device node | `/dev/pagespeak-cam` (auto-created) |
+| Frame capture | `read()` returns JPEG frames via V4L2 |
+| Configuration | `ioctl()` for resolution, pixel format |
+| Concurrency | Mutex-protected, single-opener (returns `-EBUSY`) |
+
+Build only the camera driver:
 ```bash
-git clone https://github.com/cu-ecen-aeld/final-project-mu2d2.git
-cd final-project-mu2d2
+./build.sh rpi3 pagespeak-cam-driver
+./build.sh rpi5 pagespeak-cam-driver
 ```
 
-### 2. Run the setup script
+### pagespeak-btn
 
+GPIO interrupt driver for the capture button.
+
+Build only the button driver:
 ```bash
-./setup-build.sh
+./build.sh rpi3 pagespeak-btn
+./build.sh rpi5 pagespeak-btn
 ```
-
-This clones poky, meta-raspberrypi, and meta-openembedded (Kirkstone branch), then configures the build directory.
-
-### 3. Build the image
-
-```bash
-bitbake pagespeak-image
-```
-
-The first build takes several hours. Subsequent builds are much faster due to sstate caching.
-
-### 4. Find the output image
-
-After a successful build, the SD card image is at:
-
-```
-build/tmp/deploy/images/raspberrypi3/pagespeak-image-raspberrypi3.rpi-sdimg
-```
-
-(Replace `raspberrypi3` with `raspberrypi5` if building for RPi 5.)
 
 ## Flashing the Image
 
@@ -91,15 +150,15 @@ build/tmp/deploy/images/raspberrypi3/pagespeak-image-raspberrypi3.rpi-sdimg
 **WARNING:** Double-check the device name — `dd` will overwrite whatever you point it at.
 
 ```bash
-# Find your SD card device (e.g., /dev/sdX on Linux, /dev/diskN on macOS)
-lsblk   # Linux
-diskutil list   # macOS
+# Find your SD card device
+lsblk                    # Linux: /dev/sdX
+diskutil list            # macOS: /dev/diskN
 
-# Unmount the SD card
-sudo umount /dev/sdX*   # Linux
+# Unmount
+sudo umount /dev/sdX*    # Linux
 diskutil unmountDisk /dev/diskN   # macOS
 
-# Flash
+# Flash (example for RPi 3)
 sudo dd if=build/tmp/deploy/images/raspberrypi3/pagespeak-image-raspberrypi3.rpi-sdimg \
     of=/dev/sdX bs=4M status=progress
 sync
@@ -112,89 +171,123 @@ sync
 3. Choose your SD card
 4. Write
 
-### Using bmaptool (fastest, Linux)
+## First Boot Verification
+
+Connect via serial console (115200 baud) or SSH over Ethernet. Login as `root` (no password).
 
 ```bash
-sudo bmaptool copy build/tmp/deploy/images/raspberrypi3/pagespeak-image-raspberrypi3.rpi-sdimg /dev/sdX
+# Verify kernel modules loaded
+lsmod | grep pagespeak
+# Expected: pagespeak_cam, pagespeak_btn
+
+# Verify device nodes
+ls -la /dev/pagespeak-cam
+# Expected: character device
+
+# Test camera module (with USB webcam connected)
+dmesg | grep pagespeak_cam
+v4l2-ctl --list-devices
+
+# Test GPIO
+gpiodetect
+gpioinfo gpiochip0 | head -10
+
+# Test audio
+aplay -l
+speaker-test -t wav -c 2
 ```
-
-## Switching Target Machine
-
-Edit `conf/local.conf` and change the `MACHINE` variable:
-
-```bitbake
-# Raspberry Pi 3B (default)
-MACHINE = "raspberrypi3"
-
-# Raspberry Pi 5
-# MACHINE = "raspberrypi5"
-```
-
-Then re-run `./setup-build.sh` (or just re-run `bitbake pagespeak-image` if you're already in the build environment).
-
-**Note on RPi 5:** The `raspberrypi5` MACHINE is available in meta-raspberrypi Kirkstone, but boot support may be limited due to U-Boot compatibility. If you encounter boot issues with RPi 5, consider upgrading to Yocto Scarthgap (5.0 LTS) which has better RPi 5 support via the `meta-lts-mixins` layer.
-
-## First Boot Verification Checklist
-
-After flashing and booting the RPi (connect via serial console at 115200 baud, or SSH over Ethernet):
-
-- [ ] **Login:** System reaches login prompt. Log in as `root` (no password).
-
-- [ ] **Camera (V4L2):** Connect a USB UVC webcam, then:
-  ```bash
-  dmesg | grep -i uvc
-  # Should show: uvcvideo: Found UVC x.xx device ...
-  v4l2-ctl --list-devices
-  # Should list the USB camera as /dev/video0 or similar
-  ```
-
-- [ ] **Audio (ALSA):**
-  ```bash
-  aplay -l
-  # Should list at least one audio device (bcm2835 headphones, or USB audio)
-  speaker-test -t wav -c 2
-  # Should produce audio through connected speakers/headphones
-  ```
-
-- [ ] **GPIO:**
-  ```bash
-  gpiodetect
-  # Should show: gpiochip0 [pinctrl-bcm2835] (54 lines)  (or similar)
-  gpioinfo gpiochip0 | head -10
-  # Should list GPIO lines with their status
-  ```
-
-- [ ] **Network:**
-  ```bash
-  ip addr
-  # Should show eth0 with an IP address (if connected via Ethernet)
-  ```
 
 ## Repository Structure
 
 ```
 final-project-mu2d2/
-├── meta-pagespeak/                # Custom Yocto layer
-│   ├── conf/
-│   │   └── layer.conf             # Layer configuration
-│   ├── recipes-core/
-│   │   └── images/
-│   │       └── pagespeak-image.bb # Image recipe
-│   ├── recipes-kernel/
-│   │   └── linux/
-│   │       ├── linux-raspberrypi_%.bbappend
-│   │       └── files/
-│   │           └── pagespeak.cfg  # Kernel config fragment
-│   ├── recipes-app/               # (future: application recipes)
-│   ├── recipes-config/            # (future: udev rules, systemd services)
-│   └── recipes-support/           # (future: support libraries)
+├── meta-pagespeak/                    # Custom Yocto layer
+│   ├── conf/layer.conf                # Layer configuration (Kirkstone)
+│   ├── recipes-core/images/
+│   │   └── pagespeak-image.bb         # Main image recipe
+│   └── recipes-kernel/
+│       ├── linux/
+│       │   ├── linux-raspberrypi_%.bbappend
+│       │   └── files/pagespeak.cfg    # Kernel config fragment
+│       ├── pagespeak-cam-driver/
+│       │   ├── pagespeak-cam-driver_0.1.bb
+│       │   └── files/
+│       │       ├── pagespeak_cam.c    # Camera capture module
+│       │       ├── pagespeak_cam.h    # ioctl definitions
+│       │       ├── Makefile
+│       │       └── COPYING
+│       └── pagespeak-btn/
+│           ├── pagespeak-btn.bb
+│           └── files/
+│               ├── pagespeak-btn.c    # GPIO button module
+│               └── Makefile
+├── tests/
+│   ├── pagespeak_cam_test.c           # Userspace test for camera driver
+│   └── pagespeak_cam.h
 ├── conf/
-│   ├── local.conf                 # Build configuration
-│   └── bblayers.conf.sample       # Layer paths template
-├── setup-build.sh                 # Build environment setup script
-└── README.md                      # This file
+│   ├── local.conf                     # Build configuration
+│   └── bblayers.conf.sample           # Layer paths template
+├── build.sh                           # Multi-target build script
+├── setup-build.sh                     # Initial setup script
+├── Dockerfile.arm64                   # Docker image for Apple Silicon
+└── README.md
 ```
+
+## Build Configuration
+
+### Changing Default Target
+
+Edit `conf/local.conf`:
+
+```bitbake
+# Default machine (can be overridden by MACHINE env var or build.sh)
+MACHINE ?= "raspberrypi3"
+```
+
+Or override at build time:
+```bash
+MACHINE=raspberrypi5 bitbake pagespeak-image
+```
+
+### Parallel Build Settings
+
+In `conf/local.conf` or via environment:
+
+```bash
+BB_NUMBER_THREADS=16 PARALLEL_MAKE="-j 16" ./build.sh rpi5
+```
+
+### Build Cache
+
+Docker builds use named volumes for persistent caching:
+- `yocto-downloads` — Downloaded source tarballs
+- `yocto-sstate` — Shared state cache (dramatically speeds up rebuilds)
+- `yocto-tmp` — Build artifacts
+
+To clear the cache:
+```bash
+docker volume rm yocto-downloads yocto-sstate yocto-tmp
+```
+
+## Troubleshooting
+
+### Build fails with "case-sensitive filesystem" error
+
+On macOS, Yocto requires a case-sensitive filesystem. The Docker volumes handle this automatically. If building natively on Linux, ensure your filesystem is case-sensitive (ext4, xfs).
+
+### Module fails to load with "version magic" error
+
+The kernel module was built for a different kernel version. Rebuild the module:
+```bash
+./build.sh rpi3 pagespeak-cam-driver -c cleansstate
+./build.sh rpi3 pagespeak-cam-driver
+```
+
+### Docker build is slow on Apple Silicon
+
+This is expected — Rosetta x86 emulation adds overhead. Use the native ARM64 Docker image (`Dockerfile.arm64`) for better performance. First builds take 2-4 hours; subsequent builds use sstate cache and are much faster.
 
 ## License
 
-MIT, GPL
+- Kernel modules: GPL-2.0
+- Build scripts and configuration: MIT
