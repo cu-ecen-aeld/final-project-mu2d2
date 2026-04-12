@@ -24,7 +24,8 @@ SRC_URI = "file://opencv-validate.c"
 S = "${WORKDIR}"
 
 do_compile() {
-    ${CC} ${CFLAGS} ${LDFLAGS} \
+    ${CXX} ${CXXFLAGS} ${LDFLAGS} \
+        -std=c++11 \
         -I${STAGING_INCDIR}/opencv4 \
         -o ${S}/opencv-validate \
         ${S}/opencv-validate.c \
