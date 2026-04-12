@@ -35,9 +35,11 @@ IMAGE_INSTALL:append = " leptonica"
 # tesseract-lang-eng (not tesseract-ocr-tessdata-eng).
 IMAGE_INSTALL:append = " tesseract tesseract-lang-eng"
 
-# espeak-ng — text-to-speech synthesis engine.
-# Not in Kirkstone meta-oe; provided by meta-pagespeak/recipes-support/espeak-ng.
-IMAGE_INSTALL:append = " espeak-ng"
+# espeak — text-to-speech synthesis engine.
+# Available in Kirkstone meta-oe as 'espeak' (1.48.04).
+# NOTE: espeak ships libespeak.so / <espeak/speak_lib.h>, NOT the espeak-ng API.
+# tts.c in the application repo must be updated to use the espeak API if this is kept.
+IMAGE_INSTALL:append = " espeak"
 
 # OpenCV validation binary (links libopencv_core.so, DoD check)
 IMAGE_INSTALL:append = " opencv-validate"
