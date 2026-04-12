@@ -17,16 +17,18 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 DEPENDS = "opencv"
 
+inherit pkgconfig
+
 SRC_URI = "file://opencv-validate.c"
 
 S = "${WORKDIR}"
 
 do_compile() {
     ${CC} ${CFLAGS} ${LDFLAGS} \
-        $(${PKG_CONFIG} --cflags opencv4) \
+        -I${STAGING_INCDIR}/opencv4 \
         -o ${S}/opencv-validate \
         ${S}/opencv-validate.c \
-        $(${PKG_CONFIG} --libs opencv4)
+        -L${STAGING_LIBDIR} -lopencv_core -lopencv_imgproc
 }
 
 do_install() {
