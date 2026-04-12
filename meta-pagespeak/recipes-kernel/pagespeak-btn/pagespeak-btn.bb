@@ -49,3 +49,6 @@ FILES:${PN} += "${bindir}/pagespeak-btn-test"
 
 # Satisfy any package dependency on the kernel module by name
 RPROVIDES:${PN} += "kernel-module-pagespeak-btn"
+
+# Auto-load the module at boot by generating /etc/modules-load.d/pagespeak-btn.conf
+KERNEL_MODULE_AUTOLOAD += "pagespeak-btn"
