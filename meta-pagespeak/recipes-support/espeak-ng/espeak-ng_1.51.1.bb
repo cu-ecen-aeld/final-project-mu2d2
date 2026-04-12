@@ -18,15 +18,18 @@ LIC_FILES_CHKSUM = "file://COPYING;md5=d32239bcb673463ab874e80d47fae504"
 
 # Commit pinned to the signed 1.51.1 release tag
 SRCREV = "34762a2b9621d3643e67a00642984c21f0626bdc"
-SRC_URI = "git://github.com/espeak-ng/espeak-ng.git;branch=master;protocol=https"
+SRC_URI = "git://github.com/espeak-ng/espeak-ng.git;protocol=https;nobranch=1"
 
 S = "${WORKDIR}/git"
 
-inherit autotools pkgconfig
+inherit cmake pkgconfig
 
-# Disable pcaudiolib — not available in Kirkstone meta-oe.
-# espeak-ng can write to ALSA directly or produce WAV files via -w flag.
-EXTRA_OECONF = "--with-pcaudiolib=no"
+# Disable audio playback (pcaudio not in Kirkstone meta-oe).
+# espeak-ng can still produce WAV files via: espeak-ng -w out.wav "text"
+EXTRA_OECMAKE = " \
+    -DBUILD_SHARED_LIBS=ON    \
+    -DUSE_SPEECHPLAYER=OFF    \
+"
 
 # Include the language data directory and shared library
 FILES:${PN}     += "${libdir}/espeak-ng-data"
