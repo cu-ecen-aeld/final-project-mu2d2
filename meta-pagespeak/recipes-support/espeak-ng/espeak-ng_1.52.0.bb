@@ -1,4 +1,4 @@
-# espeak-ng_1.51.1.bb
+# espeak-ng_1.52.0.bb
 #
 # Custom Yocto recipe for eSpeak NG — required because espeak-ng is not
 # present in the Kirkstone branch of meta-openembedded (only the older
@@ -16,19 +16,36 @@ BUGTRACKER  = "https://github.com/espeak-ng/espeak-ng/issues"
 LICENSE          = "GPL-3.0-only"
 LIC_FILES_CHKSUM = "file://COPYING;md5=d32239bcb673463ab874e80d47fae504"
 
-# Commit pinned to the 1.52.0 release tag (first release with cmake, last with autoconf)
+# espeak-ng 1.52.0 — first cmake release, last autoconf release
 SRCREV = "4870adfa25b1a32b4361592f1be8a40337c58d6c"
-SRC_URI = "git://github.com/espeak-ng/espeak-ng.git;protocol=https;nobranch=1"
+
+# sonic is fetched by espeak-ng's CMakeLists via FetchContent at configure
+# time. Yocto blocks network access during do_configure, so we pre-fetch
+# sonic here and redirect FetchContent to the local copy via
+# FETCHCONTENT_SOURCE_DIR_SONIC-GIT.
+SRCREV_sonic = "fbf75c3d6d846bad3bb3d456cbc5d07d9fd8c104"
+
+SRC_URI = " \
+    git://github.com/espeak-ng/espeak-ng.git;protocol=https;nobranch=1 \
+    git://github.com/waywardgeek/sonic.git;name=sonic;protocol=https;nobranch=1;destsuffix=sonic-src \
+"
+
+SRCREV_FORMAT = "default_sonic"
 
 S = "${WORKDIR}/git"
 
 inherit cmake pkgconfig
 
-# Disable audio playback (pcaudio not in Kirkstone meta-oe).
-# espeak-ng can still produce WAV files via: espeak-ng -w out.wav "text"
+# FETCHCONTENT_FULLY_DISCONNECTED stops cmake from attempting any downloads.
+# FETCHCONTENT_SOURCE_DIR_SONIC-GIT redirects FetchContent to the pre-fetched
+# sonic source unpacked by BitBake into ${WORKDIR}/sonic-src.
+# Disable pcaudio (not in Kirkstone meta-oe) and speech-player.
 EXTRA_OECMAKE = " \
-    -DBUILD_SHARED_LIBS=ON    \
-    -DUSE_SPEECHPLAYER=OFF    \
+    -DBUILD_SHARED_LIBS=ON \
+    -DUSE_SPEECHPLAYER=OFF \
+    -DUSE_LIBPCAUDIO=OFF   \
+    -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
+    -DFETCHCONTENT_SOURCE_DIR_SONIC-GIT=${WORKDIR}/sonic-src \
 "
 
 # Include the language data directory and shared library
