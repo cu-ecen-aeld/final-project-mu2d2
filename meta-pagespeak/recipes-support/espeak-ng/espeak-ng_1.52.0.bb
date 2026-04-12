@@ -34,11 +34,17 @@ SRCREV_FORMAT = "default_sonic"
 
 S = "${WORKDIR}/git"
 
+# qemu-native provides qemu-aarch64 so cmake can run the cross-compiled
+# espeak-ng binary during the data compilation step (compile-phonemes,
+# compile-intonations, compile-dict). Without this, cmake tries to run
+# the ARM ELF directly on x86 and fails with "syntax error: word unexpected".
+DEPENDS += "qemu-native"
+
 inherit cmake pkgconfig
 
-# FETCHCONTENT_FULLY_DISCONNECTED stops cmake from attempting any downloads.
-# FETCHCONTENT_SOURCE_DIR_SONIC-GIT redirects FetchContent to the pre-fetched
-# sonic source unpacked by BitBake into ${WORKDIR}/sonic-src.
+# CMAKE_CROSSCOMPILING_EMULATOR tells cmake to prefix all cross-compiled
+# binary executions with qemu-aarch64, allowing the data generation step
+# to run correctly on the x86 build host.
 # Disable pcaudio (not in Kirkstone meta-oe) and speech-player.
 EXTRA_OECMAKE = " \
     -DBUILD_SHARED_LIBS=ON \
@@ -46,6 +52,7 @@ EXTRA_OECMAKE = " \
     -DUSE_LIBPCAUDIO=OFF   \
     -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
     -DFETCHCONTENT_SOURCE_DIR_SONIC-GIT=${WORKDIR}/sonic-src \
+    -DCMAKE_CROSSCOMPILING_EMULATOR=${STAGING_BINDIR_NATIVE}/qemu-aarch64 \
 "
 
 # Include the language data directory and shared library
