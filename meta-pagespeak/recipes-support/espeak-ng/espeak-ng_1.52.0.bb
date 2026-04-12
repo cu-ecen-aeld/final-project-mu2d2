@@ -16,8 +16,8 @@ BUGTRACKER  = "https://github.com/espeak-ng/espeak-ng/issues"
 LICENSE          = "GPL-3.0-only"
 LIC_FILES_CHKSUM = "file://COPYING;md5=d32239bcb673463ab874e80d47fae504"
 
-# Commit pinned to the signed 1.51.1 release tag
-SRCREV = "34762a2b9621d3643e67a00642984c21f0626bdc"
+# Commit pinned to the 1.52.0 release tag (first release with cmake, last with autoconf)
+SRCREV = "4870adfa25b1a32b4361592f1be8a40337c58d6c"
 SRC_URI = "git://github.com/espeak-ng/espeak-ng.git;protocol=https;nobranch=1"
 
 S = "${WORKDIR}/git"
