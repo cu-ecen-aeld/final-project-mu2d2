@@ -30,10 +30,13 @@ IMAGE_INSTALL:append = " opencv"
 # Leptonica — image processing library required by Tesseract
 IMAGE_INSTALL:append = " leptonica"
 
-# Tesseract OCR engine, shared library, and English language data
-IMAGE_INSTALL:append = " tesseract-ocr tesseract-ocr-tessdata-eng"
+# Tesseract OCR engine and English language data.
+# Kirkstone meta-oe package names: tesseract (not tesseract-ocr) and
+# tesseract-lang-eng (not tesseract-ocr-tessdata-eng).
+IMAGE_INSTALL:append = " tesseract tesseract-lang-eng"
 
-# espeak-ng — text-to-speech synthesis engine
+# espeak-ng — text-to-speech synthesis engine.
+# Not in Kirkstone meta-oe; provided by meta-pagespeak/recipes-support/espeak-ng.
 IMAGE_INSTALL:append = " espeak-ng"
 
 # OpenCV validation binary (links libopencv_core.so, DoD check)
