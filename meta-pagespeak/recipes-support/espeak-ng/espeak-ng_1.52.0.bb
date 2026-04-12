@@ -42,9 +42,17 @@ DEPENDS += "qemu-native"
 
 inherit cmake pkgconfig
 
-# CMAKE_CROSSCOMPILING_EMULATOR tells cmake to prefix all cross-compiled
-# binary executions with qemu-aarch64, allowing the data generation step
-# to run correctly on the x86 build host.
+# Write a wrapper script that invokes qemu-aarch64 with the ARM sysroot so
+# shared libraries are found. CMAKE_CROSSCOMPILING_EMULATOR points to this
+# wrapper, which cmake prepends to every cross-compiled binary invocation.
+do_configure:prepend() {
+    cat > ${WORKDIR}/qemu-wrapper.sh << WRAPPER
+#!/bin/sh
+exec ${STAGING_BINDIR_NATIVE}/qemu-aarch64 -L ${STAGING_DIR_TARGET} "\$@"
+WRAPPER
+    chmod +x ${WORKDIR}/qemu-wrapper.sh
+}
+
 # Disable pcaudio (not in Kirkstone meta-oe) and speech-player.
 EXTRA_OECMAKE = " \
     -DBUILD_SHARED_LIBS=ON \
@@ -52,7 +60,7 @@ EXTRA_OECMAKE = " \
     -DUSE_LIBPCAUDIO=OFF   \
     -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
     -DFETCHCONTENT_SOURCE_DIR_SONIC-GIT=${WORKDIR}/sonic-src \
-    -DCMAKE_CROSSCOMPILING_EMULATOR=${STAGING_BINDIR_NATIVE}/qemu-aarch64 \
+    -DCMAKE_CROSSCOMPILING_EMULATOR=${WORKDIR}/qemu-wrapper.sh \
 "
 
 # Include the language data directory and shared library
