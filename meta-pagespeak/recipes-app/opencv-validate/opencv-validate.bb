@@ -23,10 +23,10 @@ S = "${WORKDIR}"
 
 do_compile() {
     ${CC} ${CFLAGS} ${LDFLAGS} \
-        $(pkg-config --cflags opencv) \
+        $(pkg-config --cflags opencv4) \
         -o ${S}/opencv-validate \
         ${S}/opencv-validate.c \
-        $(pkg-config --libs opencv)
+        $(pkg-config --libs opencv4)
 }
 
 do_install() {
