@@ -111,9 +111,15 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    // Install handlers so Ctrl+C and SIGTERM allow a clean exit
-    signal(SIGINT,  sig_handler);
-    signal(SIGTERM, sig_handler);
+    // Install handlers so Ctrl+C and SIGTERM allow a clean exit.
+    // sigaction with sa_flags=0 (no SA_RESTART) ensures the blocking read()
+    // returns EINTR when interrupted, instead of being silently restarted.
+    struct sigaction sa;
+    sa.sa_handler = sig_handler;
+    sa.sa_flags   = 0;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT,  &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
 
     // Open syslog connection with PID in each message, facility LOG_USER
     openlog("pagespeak-btn-test", LOG_PID | LOG_CONS, LOG_USER);
