@@ -133,8 +133,11 @@ static int pagespeak_cam_open(struct inode *inode, struct file *filp)
     /* Configure camera format via userspace helper */
     ret = configure_camera_format(pcam_dev->width, pcam_dev->height,
                                   pcam_dev->pixelformat);
-    if (ret < 0)
-        pr_err("pagespeak_cam: camera config failed (continuing with defaults): %d\n", ret);
+    if (ret < 0) {
+        pr_err("pagespeak_cam: camera config failed: %d\n", ret);
+        mutex_unlock(&pcam_dev->lock);
+        return ret;
+    }
 
     /* Open the underlying V4L2 video device in read mode */
     pcam_dev->video_filp = filp_open(VIDEO_DEV_PATH, O_RDONLY, 0);

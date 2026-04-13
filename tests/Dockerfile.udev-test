@@ -1,0 +1,17 @@
+FROM ubuntu:24.04
+
+# Use Ubuntu 24.04 for systemd 255+ which includes udevadm verify
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install udev (provides udevadm)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        udev && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workdir
+
+# Copy the entire repository into the container
+COPY . .
+
+CMD ["bash", "tests/test_udev_rules.sh"]
