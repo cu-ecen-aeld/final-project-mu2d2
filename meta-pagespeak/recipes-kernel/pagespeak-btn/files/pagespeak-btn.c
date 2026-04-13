@@ -30,8 +30,10 @@
 #define DEVICE_NAME  "pagespeak-btn"
 #define CLASS_NAME   "pagespeak"
 
-// Default GPIO pin, overridable at insmod time: insmod pagespeak-btn.ko gpio_pin=22
-static int gpio_pin = 17;
+// On RPi5, the RP1 GPIO controller (gpiochip4) has a global base offset of 399.
+// BCM GPIO 17 (physical pin 11) maps to global GPIO 416 (399 + 17).
+// The legacy integer GPIO API requires the global number, not the BCM number.
+static int gpio_pin = 416;
 
 // Default debounce window in milliseconds
 static int debounce_ms = 50;

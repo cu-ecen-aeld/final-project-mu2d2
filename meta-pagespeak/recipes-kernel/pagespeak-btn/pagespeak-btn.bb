@@ -17,24 +17,21 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/GPL-2.0-only;md5=801f80980d171d
 
 # The module class handles cross-compiling an out-of-tree kernel module
 # against the Yocto-built kernel headers
-inherit module systemd
+inherit module
 
 # All source files live in the files/ subdirectory next to this recipe
 SRC_URI = " \
     file://pagespeak-btn.c        \
     file://pagespeak-btn-test.c   \
     file://Makefile               \
-    file://pagespeak-btn.service  \
 "
 
 # BitBake unpacks file:// sources directly into WORKDIR
 S = "${WORKDIR}"
 
 # Compile the userspace test binary after the kernel module build completes.
-# Uses explicit --sysroot because 'inherit module' sets up a kernel build
-# environment where LDFLAGS lacks userspace GCC runtime paths (crtbegin, libgcc).
 do_compile:append() {
-    ${CC} ${TARGET_CC_ARCH} --sysroot=${STAGING_DIR_TARGET} \
+    ${CC} ${CFLAGS} ${LDFLAGS} \
         -o ${S}/pagespeak-btn-test \
         ${S}/pagespeak-btn-test.c
 }
@@ -43,20 +40,13 @@ do_compile:append() {
 do_install:append() {
     install -d ${D}${bindir}
     install -m 0755 ${S}/pagespeak-btn-test ${D}${bindir}/pagespeak-btn-test
-
-    install -d ${D}${systemd_system_unitdir}
-    install -m 0644 ${WORKDIR}/pagespeak-btn.service ${D}${systemd_system_unitdir}/pagespeak-btn.service
 }
 
-# Declare the test binary and systemd service as part of this package
+# Declare the test binary as part of this package's file set
 FILES:${PN} += "${bindir}/pagespeak-btn-test"
-FILES:${PN} += "${systemd_system_unitdir}/pagespeak-btn.service"
-
-SYSTEMD_SERVICE:${PN} = "pagespeak-btn.service"
-SYSTEMD_AUTO_ENABLE = "enable"
 
 # Satisfy any package dependency on the kernel module by name
 RPROVIDES:${PN} += "kernel-module-pagespeak-btn"
 
-# Module is loaded by pagespeak-btn.service (after dev-gpiochip0.device appears),
-# not via modules-load.d, to avoid -EPROBE_DEFER on RPi5's PCIe-attached RP1 GPIO.
+# Auto-load the module at boot via /etc/modules-load.d/pagespeak-btn.conf
+KERNEL_MODULE_AUTOLOAD += "pagespeak-btn"
