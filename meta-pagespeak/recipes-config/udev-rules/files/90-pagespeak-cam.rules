@@ -1,0 +1,9 @@
+# PageSpeak camera udev rules
+# Creates stable symlink /dev/pagespeak-cam-raw for UVC webcams
+# Ensures daemon can access camera without root privileges
+
+# Match UVC video capture devices (not metadata or output devices)
+# ATTR{index}=="0" targets the main capture node, not secondary nodes
+SUBSYSTEM=="video4linux", ATTR{index}=="0", SUBSYSTEMS=="usb", \
+    DRIVERS=="uvcvideo", \
+    SYMLINK+="pagespeak-cam-raw", MODE="0660", GROUP="video"
