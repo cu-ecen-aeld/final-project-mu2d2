@@ -46,3 +46,24 @@ IMAGE_INSTALL:append = " opencv-validate"
 
 # Development extras
 EXTRA_IMAGE_FEATURES += "debug-tweaks ssh-server-dropbear"
+
+# WiFi — write wpa_supplicant config if WIFI_SSID is set in local.conf
+wifi_config_install() {
+    if [ -n "${WIFI_SSID}" ]; then
+        mkdir -p ${IMAGE_ROOTFS}/etc/wpa_supplicant
+        cat > ${IMAGE_ROOTFS}/etc/wpa_supplicant/wpa_supplicant-wlan0.conf << EOF
+ctrl_interface=/var/run/wpa_supplicant
+ctrl_interface_group=0
+update_config=1
+
+network={
+    ssid="${WIFI_SSID}"
+    psk="${WIFI_PASSWORD}"
+    key_mgmt=WPA-PSK
+}
+EOF
+    fi
+}
+ROOTFS_POSTPROCESS_COMMAND += "wifi_config_install; "
+
+IMAGE_INSTALL:append = " wpa-supplicant"
