@@ -9,6 +9,7 @@ inherit module
 SRC_URI = "file://Makefile \
            file://pagespeak_cam.c \
            file://pagespeak_cam.h \
+           file://pagespeak_cam_test.c \
           "
 
 S = "${WORKDIR}"
@@ -23,3 +24,19 @@ RDEPENDS:${PN} += "pagespeak-udev-rules"
 
 # Auto-load the module at boot via /etc/modules-load.d/pagespeak-cam.conf
 KERNEL_MODULE_AUTOLOAD += "pagespeak_cam"
+
+# Compile the userspace test binary after the kernel module build completes
+do_compile:append() {
+    ${CC} ${CFLAGS} ${LDFLAGS} \
+        -o ${S}/pagespeak-cam-test \
+        ${S}/pagespeak_cam_test.c
+}
+
+# Install the test binary to /usr/bin on the target rootfs
+do_install:append() {
+    install -d ${D}${bindir}
+    install -m 0755 ${S}/pagespeak-cam-test ${D}${bindir}/pagespeak-cam-test
+}
+
+# Declare the test binary as part of this package's file set
+FILES:${PN} += "${bindir}/pagespeak-cam-test"
