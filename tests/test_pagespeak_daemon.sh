@@ -15,7 +15,7 @@
 #   10. Recipe SRC_URI references all required files
 #   11. pagespeak-daemon added to pagespeak-image.bb
 
-set -eo pipefail
+set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
