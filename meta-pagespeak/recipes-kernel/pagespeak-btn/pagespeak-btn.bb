@@ -31,10 +31,10 @@ SRC_URI = " \
 S = "${WORKDIR}"
 
 # Compile the userspace test binary after the kernel module build completes.
-# ${CC} is the Yocto cross-compiler; ${CFLAGS} and ${LDFLAGS} are set by
-# the Yocto build environment for the target architecture.
+# Uses explicit --sysroot because 'inherit module' sets up a kernel build
+# environment where LDFLAGS lacks userspace GCC runtime paths (crtbegin, libgcc).
 do_compile:append() {
-    ${CC} ${CFLAGS} ${LDFLAGS} \
+    ${CC} ${TARGET_CC_ARCH} --sysroot=${STAGING_DIR_TARGET} \
         -o ${S}/pagespeak-btn-test \
         ${S}/pagespeak-btn-test.c
 }
