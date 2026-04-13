@@ -1,0 +1,19 @@
+[Unit]
+Description=PageSpeak OCR Daemon
+# Wait for device nodes to exist (created by kernel modules)
+After=local-fs.target dev-pagespeak\x2dbtn.device dev-pagespeak\x2dcam.device
+Wants=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/pagespeak-daemon
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Add video group for camera access
+SupplementaryGroups=video
+
+[Install]
+WantedBy=multi-user.target
