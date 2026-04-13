@@ -3,9 +3,12 @@
 # Runs in Docker on Apple Silicon without target hardware
 #
 # Tests:
-#   1. Rules file syntax validation (udevadm verify)
-#   2. Rule matching simulation (udevadm test-builtin)
-#   3. Expected attributes present in rule
+#   1. Rules file exists
+#   2. Rules file is not empty
+#   3. Required udev attributes present (SUBSYSTEM, ATTR, DRIVERS, SYMLINK, MODE, GROUP)
+#   4. No obvious syntax errors (unquoted values, malformed operators)
+#   5. Symlink name doesn't conflict with kernel naming
+#   6. Parent device matching uses SUBSYSTEMS for USB context
 
 set -eo pipefail
 
@@ -61,16 +64,17 @@ for attr in "${REQUIRED_ATTRS[@]}"; do
     fi
 done
 
-# Test 4: No syntax errors (basic check - no ACTION without operator)
+# Test 4: Check for common syntax errors
 echo "Test 4: Basic syntax validation"
-if grep -E '^[^#]*[A-Z_]+[^!=<>]=[^=]' "$RULES_FILE" | grep -v '==' | grep -v '+=' | grep -v ':=' >/dev/null 2>&1; then
-    # Found assignment without proper operator - this is actually checking for mistakes
-    # In udev, ATTR{x}=="y" is comparison, SYMLINK+="z" is append, MODE="x" is assignment
-    # Single = is valid for assignment (MODE, GROUP, OWNER)
-    pass "Syntax appears valid"
-else
-    pass "Syntax appears valid"
+# Check for unquoted values (e.g., MODE=0660 instead of MODE="0660")
+if grep -E '^[^#]*(MODE|GROUP|OWNER)=[^"0-9]' "$RULES_FILE" >/dev/null 2>&1; then
+    fail "Found unquoted assignment value"
 fi
+# Check for missing quotes around comparison values
+if grep -E '^[^#]*(SUBSYSTEM|KERNEL|DRIVERS|ATTR\{[^}]+\})=[^="]+[,\\]' "$RULES_FILE" >/dev/null 2>&1; then
+    fail "Found comparison without quotes"
+fi
+pass "No obvious syntax errors"
 
 # Test 5: Symlink name doesn't conflict with kernel naming
 echo "Test 5: Symlink name safety"
