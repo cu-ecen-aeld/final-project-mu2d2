@@ -1,6 +1,12 @@
 # PageSpeak camera udev rules
 # Creates stable symlink /dev/pagespeak-cam-raw for UVC webcams
 # Ensures daemon can access camera without root privileges
+#
+# LIMITATION: This rule matches ALL UVC webcams. If multiple USB cameras
+# are connected simultaneously, only one will own the symlink (last event
+# wins). PageSpeak is designed for single-camera operation.
+# To support a specific camera only, add vendor/product matching:
+#   ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0825"  (Logitech C270)
 
 # Match UVC video capture devices (not metadata or output devices)
 # ATTR{index}=="0" targets the main capture node, not secondary nodes
