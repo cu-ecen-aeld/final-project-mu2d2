@@ -31,7 +31,7 @@
 
 #define DEVICE_NAME     "pagespeak-cam"
 #define CLASS_NAME      "pagespeak"
-#define VIDEO_DEV_PATH  "/dev/video0"
+#define VIDEO_DEV_PATH  "/dev/pagespeak-cam-raw"
 
 /* Maximum frame buffer size: 2MB (generous for 1080p MJPEG) */
 #define MAX_FRAME_SIZE  (2 * 1024 * 1024)

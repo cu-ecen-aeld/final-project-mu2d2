@@ -21,6 +21,12 @@ IMAGE_INSTALL:append = " openssh-sftp-server nano"
 # Ensure all built kernel modules are installed
 IMAGE_INSTALL:append = " kernel-modules"
 
+# udev rules for stable camera device symlink
+IMAGE_INSTALL:append = " pagespeak-udev-rules"
+
+# Camera capture kernel module (depends on pagespeak-udev-rules for /dev/pagespeak-cam-raw)
+IMAGE_INSTALL:append = " pagespeak-cam-driver"
+
 # GPIO button IRQ driver and userspace validation test binary
 IMAGE_INSTALL:append = " pagespeak-btn"
 
