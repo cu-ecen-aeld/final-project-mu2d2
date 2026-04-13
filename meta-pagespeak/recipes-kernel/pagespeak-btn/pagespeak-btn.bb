@@ -31,7 +31,7 @@ S = "${WORKDIR}"
 
 # Compile the userspace test binary after the kernel module build completes.
 do_compile:append() {
-    ${CC} ${CFLAGS} ${LDFLAGS} \
+    ${CC} ${CFLAGS} ${LDFLAGS} ${TARGET_CC_ARCH} --sysroot=${STAGING_DIR_TARGET} \
         -o ${S}/pagespeak-btn-test \
         ${S}/pagespeak-btn-test.c
 }

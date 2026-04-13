@@ -25,7 +25,7 @@ SYSTEMD_SERVICE:${PN} = "pagespeak-daemon.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
 do_compile() {
-    ${CC} ${CFLAGS} ${LDFLAGS} \
+    ${CC} ${CFLAGS} ${LDFLAGS} ${TARGET_CC_ARCH} --sysroot=${STAGING_DIR_TARGET} \
         -o ${S}/pagespeak-daemon \
         ${S}/main.c \
         ${S}/capture.c \
