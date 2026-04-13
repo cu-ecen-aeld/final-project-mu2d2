@@ -20,3 +20,6 @@ RDEPENDS:${PN} += "v4l-utils"
 
 # udev rules create the /dev/pagespeak-cam-raw symlink this driver depends on
 RDEPENDS:${PN} += "pagespeak-udev-rules"
+
+# Auto-load the module at boot via /etc/modules-load.d/pagespeak-cam.conf
+KERNEL_MODULE_AUTOLOAD += "pagespeak_cam"
