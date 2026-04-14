@@ -12,8 +12,13 @@
 #   7.  btn_event struct in main.c has count and timestamp_ns fields
 #   8.  Source files compile (syntax check with gcc -fsyntax-only)
 #   9.  systemd service file has required sections and ExecStart=
+#   9b. systemd service dependencies configuration
+#   9c. systemd service restart policy
+#   9d. systemd service install target
+#   9e. systemd service logging configuration
 #   10. Recipe SRC_URI references all required files
 #   11. pagespeak-daemon added to pagespeak-image.bb
+#   12. Recipe systemd integration (inherit, SYSTEMD_SERVICE, SYSTEMD_AUTO_ENABLE)
 
 set -o pipefail
 
@@ -227,6 +232,90 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Test 9b: systemd service dependencies configuration
+# ---------------------------------------------------------------------------
+echo ""
+echo "Test 9b: systemd service dependencies"
+SERVICE_FILE="$SRC_DIR/pagespeak-daemon.service"
+if [[ -f "$SERVICE_FILE" ]]; then
+    # After= must include local-fs.target
+    if grep -q "^After=.*local-fs.target" "$SERVICE_FILE"; then
+        pass "Service waits for local-fs.target"
+    else
+        fail "Service missing After=local-fs.target"
+    fi
+
+    # Check for device dependencies (button and camera)
+    if grep -q "dev-pagespeak" "$SERVICE_FILE"; then
+        pass "Service has device node dependencies"
+    else
+        fail "Service missing device node dependencies (dev-pagespeak-*)"
+    fi
+else
+    skip "pagespeak-daemon.service not found"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 9c: systemd service restart policy
+# ---------------------------------------------------------------------------
+echo ""
+echo "Test 9c: systemd service restart policy"
+SERVICE_FILE="$SRC_DIR/pagespeak-daemon.service"
+if [[ -f "$SERVICE_FILE" ]]; then
+    if grep -q "^Restart=on-failure" "$SERVICE_FILE"; then
+        pass "Service has Restart=on-failure"
+    else
+        fail "Service missing Restart=on-failure"
+    fi
+
+    if grep -q "^RestartSec=" "$SERVICE_FILE"; then
+        pass "Service has RestartSec= configured"
+    else
+        fail "Service missing RestartSec= (restart delay)"
+    fi
+else
+    skip "pagespeak-daemon.service not found"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 9d: systemd service install target
+# ---------------------------------------------------------------------------
+echo ""
+echo "Test 9d: systemd service install target"
+SERVICE_FILE="$SRC_DIR/pagespeak-daemon.service"
+if [[ -f "$SERVICE_FILE" ]]; then
+    if grep -q "^WantedBy=multi-user.target" "$SERVICE_FILE"; then
+        pass "Service has WantedBy=multi-user.target"
+    else
+        fail "Service missing WantedBy=multi-user.target (required for boot start)"
+    fi
+else
+    skip "pagespeak-daemon.service not found"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 9e: systemd service logging configuration
+# ---------------------------------------------------------------------------
+echo ""
+echo "Test 9e: systemd service logging configuration"
+SERVICE_FILE="$SRC_DIR/pagespeak-daemon.service"
+if [[ -f "$SERVICE_FILE" ]]; then
+    if grep -q "^StandardOutput=journal" "$SERVICE_FILE"; then
+        pass "Service stdout goes to journal"
+    else
+        fail "Service missing StandardOutput=journal"
+    fi
+
+    if grep -q "^StandardError=journal" "$SERVICE_FILE"; then
+        pass "Service stderr goes to journal"
+    else
+        fail "Service missing StandardError=journal"
+    fi
+else
+    skip "pagespeak-daemon.service not found"
+fi
+
+# ---------------------------------------------------------------------------
 # Test 10: Recipe SRC_URI references all required files
 # ---------------------------------------------------------------------------
 echo ""
@@ -268,6 +357,33 @@ if [[ -f "$IMAGE_FILE" ]]; then
     fi
 else
     fail "Image recipe not found at $IMAGE_FILE"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 12: Recipe systemd integration
+# ---------------------------------------------------------------------------
+echo ""
+echo "Test 12: Recipe systemd integration"
+if [[ -f "$RECIPE_FILE" ]]; then
+    if grep -q "^inherit systemd" "$RECIPE_FILE"; then
+        pass "Recipe inherits systemd class"
+    else
+        fail "Recipe missing 'inherit systemd'"
+    fi
+
+    if grep -q 'SYSTEMD_SERVICE:\${PN}.*=.*pagespeak-daemon.service' "$RECIPE_FILE"; then
+        pass "Recipe defines SYSTEMD_SERVICE"
+    else
+        fail "Recipe missing SYSTEMD_SERVICE definition"
+    fi
+
+    if grep -q 'SYSTEMD_AUTO_ENABLE:\${PN}.*=.*"enable"' "$RECIPE_FILE"; then
+        pass "Recipe enables service at boot (SYSTEMD_AUTO_ENABLE)"
+    else
+        fail "Recipe missing SYSTEMD_AUTO_ENABLE = enable"
+    fi
+else
+    skip "Recipe file not found"
 fi
 
 # ---------------------------------------------------------------------------
