@@ -60,21 +60,21 @@ static bool run_pipeline(void)
     struct preprocess_result preprocessed = {0};
     char *text = NULL;
     bool success = false;
-    int cam_fd;
+    struct capture_ctx *cam_ctx;
 
     /* Step 1: Open camera and capture frame */
-    cam_fd = capture_open(CAM_DEVICE_PATH);
-    if (cam_fd < 0) {
+    cam_ctx = capture_open(CAM_DEVICE_PATH);
+    if (!cam_ctx) {
         syslog(LOG_ERR, "pipeline: failed to open camera");
         return false;
     }
 
-    if (!capture_frame(cam_fd, &frame)) {
+    if (!capture_frame(cam_ctx, &frame)) {
         syslog(LOG_ERR, "pipeline: capture failed");
-        capture_close(cam_fd);
+        capture_close(cam_ctx);
         return false;
     }
-    capture_close(cam_fd);
+    capture_close(cam_ctx);
     syslog(LOG_INFO, "pipeline: captured %zu byte frame", frame.size);
 
     /* Step 2: Preprocess image (STUB) */

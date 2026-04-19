@@ -2,8 +2,9 @@
  * @file   capture.h
  * @brief  Camera capture interface for PageSpeak daemon.
  *
- * Uses the pagespeak-cam kernel driver which exposes /dev/pagespeak-cam.
- * The driver returns JPEG frames via read().
+ * Opens /dev/pagespeak-cam (pagespeak-cam driver) for exclusive access
+ * and ioctl configuration, then captures JPEG frames from the underlying
+ * V4L2 device via mmap streaming.
  */
 
 #ifndef CAPTURE_H
@@ -12,7 +13,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-/** Maximum frame buffer size (2MB, matches kernel driver limit) */
+/** Maximum frame buffer size (2MB) */
 #define CAPTURE_MAX_FRAME_SIZE (2 * 1024 * 1024)
 
 /**
@@ -24,19 +25,28 @@ struct capture_frame {
 };
 
 /**
- * @brief Open the camera device.
- * @param device_path Path to camera device (e.g., "/dev/pagespeak-cam")
- * @return File descriptor on success, -1 on error (errno set)
+ * @brief Opaque camera context (holds both control and V4L2 file descriptors).
  */
-int capture_open(const char *device_path);
+struct capture_ctx;
 
 /**
- * @brief Capture a single JPEG frame from the camera.
- * @param fd File descriptor from capture_open()
- * @param frame Output frame structure (caller must free with capture_free)
+ * @brief Open the camera and prepare it for frame capture.
+ *
+ * Opens the pagespeak-cam control device for exclusive access, reads the
+ * raw V4L2 device path via QUERY_CAPS, and opens the V4L2 device.
+ *
+ * @param ctrl_path Path to the control device (e.g., "/dev/pagespeak-cam")
+ * @return Allocated capture context on success, NULL on error
+ */
+struct capture_ctx *capture_open(const char *ctrl_path);
+
+/**
+ * @brief Capture a single JPEG frame using V4L2 mmap streaming.
+ * @param ctx  Context from capture_open()
+ * @param frame Output frame (caller must free with capture_free)
  * @return true on success, false on error
  */
-bool capture_frame(int fd, struct capture_frame *frame);
+bool capture_frame(struct capture_ctx *ctx, struct capture_frame *frame);
 
 /**
  * @brief Free frame data allocated by capture_frame().
@@ -45,9 +55,10 @@ bool capture_frame(int fd, struct capture_frame *frame);
 void capture_free(struct capture_frame *frame);
 
 /**
- * @brief Close the camera device.
- * @param fd File descriptor to close
+ * @brief Close the camera and free the context.
+ * @param ctx Context from capture_open()
  */
-void capture_close(int fd);
+void capture_close(struct capture_ctx *ctx);
 
 #endif /* CAPTURE_H */
+
