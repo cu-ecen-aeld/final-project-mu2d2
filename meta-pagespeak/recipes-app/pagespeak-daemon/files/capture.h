@@ -13,6 +13,10 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /** Maximum frame buffer size (2MB) */
 #define CAPTURE_MAX_FRAME_SIZE (2 * 1024 * 1024)
 
@@ -59,6 +63,10 @@ void capture_free(struct capture_frame *frame);
  * @param ctx Context from capture_open()
  */
 void capture_close(struct capture_ctx *ctx);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* CAPTURE_H */
 

@@ -9,7 +9,7 @@ SRC_URI = "file://main.c \
            file://capture.c \
            file://capture.h \
            file://pagespeak_cam.h \
-           file://preprocess.c \
+           file://preprocess.cpp \
            file://preprocess.h \
            file://ocr.h \
            file://ocr_stub.c \
@@ -38,10 +38,10 @@ do_compile() {
     ${CC} ${CFLAGS} --sysroot=${STAGING_DIR_TARGET} \
         -c -o ${S}/tts_stub.o  ${S}/tts_stub.c
 
-    # Compile preprocess.c with C++ compiler (OpenCV is a C++ library)
+    # Compile preprocess.cpp with C++ compiler (OpenCV 4 C++ API)
     ${CXX} ${CXXFLAGS} -std=c++11 --sysroot=${STAGING_DIR_TARGET} \
         -I${STAGING_INCDIR}/opencv4 \
-        -c -o ${S}/preprocess.o ${S}/preprocess.c
+        -c -o ${S}/preprocess.o ${S}/preprocess.cpp
 
     # Link with C++ linker to pull in C++ runtime
     ${CXX} ${LDFLAGS} --sysroot=${STAGING_DIR_TARGET} \
@@ -51,7 +51,7 @@ do_compile() {
         ${S}/preprocess.o \
         ${S}/ocr_stub.o \
         ${S}/tts_stub.o \
-        -L${STAGING_LIBDIR} -lopencv_core -lopencv_imgproc -lm
+        -L${STAGING_LIBDIR} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lm
 }
 
 do_install() {

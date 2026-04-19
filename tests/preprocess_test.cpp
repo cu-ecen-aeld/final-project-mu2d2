@@ -23,6 +23,7 @@
 
 #include <opencv2/core/core_c.h>
 #include <opencv2/imgproc/imgproc_c.h>
+#include <opencv2/imgcodecs.hpp>
 
 #include "capture.h"
 #include "preprocess.h"
@@ -47,24 +48,23 @@ static int g_fail = 0;
  * Caller must call capture_free() on the returned frame. */
 static int make_jpeg_frame(IplImage *src, struct capture_frame *frame)
 {
-    CvMat *encoded;
-    int ext_arr[] = { CV_IMWRITE_JPEG_QUALITY, 95, 0 };
+    std::vector<uchar> buf;
+    std::vector<int> params = { cv::IMWRITE_JPEG_QUALITY, 95 };
+    cv::Mat mat(cv::Size(src->width, src->height), CV_8UC(src->nChannels),
+                src->imageData, src->widthStep);
 
     frame->data = NULL;
     frame->size = 0;
 
-    encoded = cvEncodeImage(".jpg", src, ext_arr);
-    if (!encoded)
+    if (!cv::imencode(".jpg", mat, buf, params))
         return -1;
 
-    frame->data = (unsigned char *)malloc(encoded->cols);
-    if (!frame->data) {
-        cvReleaseMat(&encoded);
+    frame->data = (unsigned char *)malloc(buf.size());
+    if (!frame->data)
         return -1;
-    }
-    memcpy(frame->data, encoded->data.ptr, encoded->cols);
-    frame->size = (size_t)encoded->cols;
-    cvReleaseMat(&encoded);
+
+    memcpy(frame->data, buf.data(), buf.size());
+    frame->size = buf.size();
     return 0;
 }
 

@@ -13,6 +13,10 @@
 #include <stddef.h>
 #include "capture.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @brief Preprocessed image data ready for OCR.
  *
@@ -47,5 +51,9 @@ bool preprocess_image(const struct capture_frame *frame,
  * @param result Result to free
  */
 void preprocess_free(struct preprocess_result *result);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* PREPROCESS_H */
