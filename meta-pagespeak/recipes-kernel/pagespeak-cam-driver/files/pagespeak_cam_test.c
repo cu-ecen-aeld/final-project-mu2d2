@@ -33,6 +33,8 @@
 #define FRAME_BUF_SIZE  (2 * 1024 * 1024)  /* 2MB */
 
 #define MJPEG_FOURCC    0x47504A4D  /* V4L2_PIX_FMT_MJPEG */
+#define CAPTURE_WIDTH   1280
+#define CAPTURE_HEIGHT  720
 
 static int test_query_caps(int fd, struct pagespeak_cam_caps *caps)
 {
@@ -331,7 +333,7 @@ int main(int argc, char *argv[])
     printf("\n");
 
     /* Test 4: Set resolution */
-    if (test_set_resolution(fd, 640, 480) < 0)
+    if (test_set_resolution(fd, CAPTURE_WIDTH, CAPTURE_HEIGHT) < 0)
         failures++;
     printf("\n");
 
@@ -345,7 +347,8 @@ int main(int argc, char *argv[])
     {
         struct pagespeak_cam_caps verify;
         if (ioctl(fd, PAGESPEAK_CAM_QUERY_CAPS, &verify) == 0) {
-            if (verify.current_width == 640 && verify.current_height == 480 &&
+            if (verify.current_width == CAPTURE_WIDTH &&
+                verify.current_height == CAPTURE_HEIGHT &&
                 verify.current_pixelformat == MJPEG_FOURCC) {
                 printf("  PASS: settings match expected values\n");
             } else {
@@ -373,7 +376,7 @@ int main(int argc, char *argv[])
     }
 
     frame_size = capture_frame_mmap(caps.raw_device_path,
-                                    640, 480, MJPEG_FOURCC,
+                                    CAPTURE_WIDTH, CAPTURE_HEIGHT, MJPEG_FOURCC,
                                     frame_buf, FRAME_BUF_SIZE);
     if (frame_size > 0) {
         if (save_frame(output_path, frame_buf, frame_size) < 0)
