@@ -124,6 +124,9 @@ static int test_concurrent_open(void)
     return 0;
 }
 
+#define NUM_BUFS    4   /* mmap buffer pool size */
+#define WARMUP_FRAMES 30  /* frames to discard for auto-exposure to settle */
+
 /*
  * Capture one frame from the raw V4L2 device using mmap streaming.
  * The pagespeak-cam fd must remain open during capture to hold the
@@ -139,8 +142,6 @@ static ssize_t capture_frame_mmap(const char *raw_dev,
     struct v4l2_requestbuffers reqbufs;
     struct v4l2_buffer buf;
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    void *mapped = MAP_FAILED;
-    uint32_t buf_length = 0;
     ssize_t frame_size = -1;
     struct pollfd pfd;
 
@@ -166,7 +167,7 @@ static ssize_t capture_frame_mmap(const char *raw_dev,
            fmt.fmt.pix.width, fmt.fmt.pix.height, fmt.fmt.pix.pixelformat);
 
     memset(&reqbufs, 0, sizeof(reqbufs));
-    reqbufs.count  = 1;
+    reqbufs.count  = 4;  /* allocate extra buffers for warm-up frames */
     reqbufs.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     reqbufs.memory = V4L2_MEMORY_MMAP;
     if (ioctl(vfd, VIDIOC_REQBUFS, &reqbufs) < 0) {
@@ -174,30 +175,39 @@ static ssize_t capture_frame_mmap(const char *raw_dev,
         goto cleanup;
     }
 
-    memset(&buf, 0, sizeof(buf));
-    buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
-    buf.index  = 0;
-    if (ioctl(vfd, VIDIOC_QUERYBUF, &buf) < 0) {
-        perror("  FAIL: VIDIOC_QUERYBUF");
-        goto cleanup;
-    }
-    buf_length = buf.length; /* save before QBUF resets the struct */
+    /* Map all 4 buffers and track their lengths/addresses for munmap */
+    void    *bufs[NUM_BUFS];
+    uint32_t buf_lengths[NUM_BUFS];
+    int      i;
 
-    mapped = mmap(NULL, buf_length, PROT_READ | PROT_WRITE,
-                  MAP_SHARED, vfd, buf.m.offset);
-    if (mapped == MAP_FAILED) {
-        perror("  FAIL: mmap");
-        goto cleanup;
-    }
+    for (i = 0; i < NUM_BUFS; i++)
+        bufs[i] = MAP_FAILED;
 
-    memset(&buf, 0, sizeof(buf));
-    buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
-    buf.index  = 0;
-    if (ioctl(vfd, VIDIOC_QBUF, &buf) < 0) {
-        perror("  FAIL: VIDIOC_QBUF");
-        goto cleanup;
+    for (i = 0; i < NUM_BUFS; i++) {
+        memset(&buf, 0, sizeof(buf));
+        buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        buf.index  = i;
+        if (ioctl(vfd, VIDIOC_QUERYBUF, &buf) < 0) {
+            perror("  FAIL: VIDIOC_QUERYBUF");
+            goto cleanup;
+        }
+        buf_lengths[i] = buf.length;
+        bufs[i] = mmap(NULL, buf.length, PROT_READ | PROT_WRITE,
+                       MAP_SHARED, vfd, buf.m.offset);
+        if (bufs[i] == MAP_FAILED) {
+            perror("  FAIL: mmap");
+            goto cleanup;
+        }
+
+        memset(&buf, 0, sizeof(buf));
+        buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        buf.index  = i;
+        if (ioctl(vfd, VIDIOC_QBUF, &buf) < 0) {
+            perror("  FAIL: VIDIOC_QBUF");
+            goto cleanup;
+        }
     }
 
     if (ioctl(vfd, VIDIOC_STREAMON, &type) < 0) {
@@ -205,6 +215,32 @@ static ssize_t capture_frame_mmap(const char *raw_dev,
         goto cleanup;
     }
 
+    /* Drain WARMUP_FRAMES frames, re-queuing each buffer so auto-exposure settles */
+    printf("  Warming up: discarding %d frames...\n", WARMUP_FRAMES);
+    for (i = 0; i < WARMUP_FRAMES; i++) {
+        pfd.fd     = vfd;
+        pfd.events = POLLIN;
+        if (poll(&pfd, 1, 5000) <= 0) {
+            printf("  FAIL: poll timeout on warm-up frame %d\n", i);
+            ioctl(vfd, VIDIOC_STREAMOFF, &type);
+            goto cleanup;
+        }
+        memset(&buf, 0, sizeof(buf));
+        buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        if (ioctl(vfd, VIDIOC_DQBUF, &buf) < 0) {
+            perror("  FAIL: VIDIOC_DQBUF warm-up");
+            ioctl(vfd, VIDIOC_STREAMOFF, &type);
+            goto cleanup;
+        }
+        if (ioctl(vfd, VIDIOC_QBUF, &buf) < 0) {
+            perror("  FAIL: VIDIOC_QBUF re-queue");
+            ioctl(vfd, VIDIOC_STREAMOFF, &type);
+            goto cleanup;
+        }
+    }
+
+    // Capture the final settled frame (frame 31)
     pfd.fd     = vfd;
     pfd.events = POLLIN;
     if (poll(&pfd, 1, 5000) <= 0) {
@@ -223,14 +259,16 @@ static ssize_t capture_frame_mmap(const char *raw_dev,
     }
 
     frame_size = (buf.bytesused < out_size) ? buf.bytesused : out_size;
-    memcpy(out_buf, mapped, frame_size);
-    printf("  PASS: captured %zd bytes\n", frame_size);
+    memcpy(out_buf, bufs[buf.index], frame_size);
+    printf("  PASS: captured %zd bytes (buf index %u)\n", frame_size, buf.index);
 
     ioctl(vfd, VIDIOC_STREAMOFF, &type);
 
 cleanup:
-    if (mapped != MAP_FAILED)
-        munmap(mapped, buf_length);
+    for (i = 0; i < NUM_BUFS; i++) {
+        if (bufs[i] && bufs[i] != MAP_FAILED)
+            munmap(bufs[i], buf_lengths[i]);
+    }
     if (vfd >= 0)
         close(vfd);
     return frame_size;
