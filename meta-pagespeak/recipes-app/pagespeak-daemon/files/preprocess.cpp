@@ -102,11 +102,15 @@ bool preprocess_image(const struct capture_frame *frame,
     cv::Mat gray;
     cv::cvtColor(decoded, gray, cv::COLOR_BGR2GRAY);
 
-    // Step 3: Gaussian blur, noise reduction
-    cv::Mat blurred;
-    cv::GaussianBlur(gray, blurred, cv::Size(3, 3), 0);
+    // Step 3: Histogram equalization to normalize lighting
+    cv::Mat equalized;
+    cv::equalizeHist(gray, equalized);
 
-    // Step 4: Deskew, detect and correct tilt up to ±15°
+    // Step 5: Gaussian blur, noise reduction
+    cv::Mat blurred;
+    cv::GaussianBlur(equalized, blurred, cv::Size(3, 3), 0);
+
+    // Step 6: Deskew, detect and correct tilt up to ±15°
     double skew_deg = detect_skew_angle(blurred);
     syslog(LOG_DEBUG, "preprocess_image: detected skew %.2f degrees", skew_deg);
 
@@ -116,7 +120,7 @@ bool preprocess_image(const struct capture_frame *frame,
     else
         deskewed = blurred; // no correction needed
 
-    // Step 5: Adaptive threshold, binarize text vs background
+    // Step 7: Adaptive threshold, binarize text vs background
     cv::Mat binary;
     cv::adaptiveThreshold(deskewed, binary,
                           255,
@@ -125,7 +129,7 @@ bool preprocess_image(const struct capture_frame *frame,
                           THRESH_BLOCK_SIZE,
                           THRESH_C);
 
-    // Step 6: Copy pixels to output buffer
+    // Step 8: Copy pixels to output buffer
     size_t pixel_count = (size_t)(binary.cols * binary.rows);
     result->data = (unsigned char *)std::malloc(pixel_count);
     if (!result->data) {

@@ -25,8 +25,8 @@
 
 #include "pagespeak_cam.h"
 
-#define CAPTURE_WIDTH   640
-#define CAPTURE_HEIGHT  480
+#define CAPTURE_WIDTH   1280
+#define CAPTURE_HEIGHT  720
 #define CAPTURE_PIXFMT  0x47504A4D  /* V4L2_PIX_FMT_MJPEG */
 #define POLL_TIMEOUT_MS 5000
 #define NUM_BUFS        4
