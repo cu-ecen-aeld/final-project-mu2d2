@@ -29,6 +29,8 @@
 #define CAPTURE_HEIGHT  480
 #define CAPTURE_PIXFMT  0x47504A4D  /* V4L2_PIX_FMT_MJPEG */
 #define POLL_TIMEOUT_MS 5000
+#define NUM_BUFS        4
+#define WARMUP_FRAMES   30  /* frames discarded for auto-exposure to settle */
 
 struct capture_ctx {
     int ctrl_fd;   /* /dev/pagespeak-cam — holds exclusive access lock */
@@ -112,10 +114,11 @@ bool capture_frame(struct capture_ctx *ctx, struct capture_frame *frame)
     struct v4l2_requestbuffers reqbufs;
     struct v4l2_buffer buf;
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    void *mapped = MAP_FAILED;
-    uint32_t buf_length = 0;
+    void    *bufs[NUM_BUFS];
+    uint32_t buf_lengths[NUM_BUFS];
     struct pollfd pfd;
     bool success = false;
+    int i;
 
     if (!ctx || ctx->v4l2_fd < 0 || !frame) {
         syslog(LOG_ERR, "capture_frame: invalid arguments");
@@ -125,9 +128,12 @@ bool capture_frame(struct capture_ctx *ctx, struct capture_frame *frame)
     frame->data = NULL;
     frame->size = 0;
 
-    // Request one mmap buffer
+    for (i = 0; i < NUM_BUFS; i++)
+        bufs[i] = MAP_FAILED;
+
+    // Request mmap buffer pool
     memset(&reqbufs, 0, sizeof(reqbufs));
-    reqbufs.count  = 1;
+    reqbufs.count  = NUM_BUFS;
     reqbufs.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     reqbufs.memory = V4L2_MEMORY_MMAP;
     if (ioctl(ctx->v4l2_fd, VIDIOC_REQBUFS, &reqbufs) < 0) {
@@ -135,31 +141,34 @@ bool capture_frame(struct capture_ctx *ctx, struct capture_frame *frame)
         return false;
     }
 
-    // Query buffer for mmap offset and length
-    memset(&buf, 0, sizeof(buf));
-    buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
-    buf.index  = 0;
-    if (ioctl(ctx->v4l2_fd, VIDIOC_QUERYBUF, &buf) < 0) {
-        syslog(LOG_ERR, "capture_frame: VIDIOC_QUERYBUF: %s", strerror(errno));
-        goto cleanup;
-    }
-    buf_length = buf.length; // save before QBUF resets the struct
-    mapped = mmap(NULL, buf_length, PROT_READ | PROT_WRITE,
-                  MAP_SHARED, ctx->v4l2_fd, buf.m.offset);
-    if (mapped == MAP_FAILED) {
-        syslog(LOG_ERR, "capture_frame: mmap: %s", strerror(errno));
-        goto cleanup;
-    }
+    // Map and queue all buffers
+    for (i = 0; i < NUM_BUFS; i++) {
+        memset(&buf, 0, sizeof(buf));
+        buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        buf.index  = i;
+        if (ioctl(ctx->v4l2_fd, VIDIOC_QUERYBUF, &buf) < 0) {
+            syslog(LOG_ERR, "capture_frame: VIDIOC_QUERYBUF[%d]: %s",
+                   i, strerror(errno));
+            goto cleanup;
+        }
+        buf_lengths[i] = buf.length;
+        bufs[i] = mmap(NULL, buf.length, PROT_READ | PROT_WRITE,
+                       MAP_SHARED, ctx->v4l2_fd, buf.m.offset);
+        if (bufs[i] == MAP_FAILED) {
+            syslog(LOG_ERR, "capture_frame: mmap[%d]: %s", i, strerror(errno));
+            goto cleanup;
+        }
 
-    // Queue buffer and start streaming
-    memset(&buf, 0, sizeof(buf));
-    buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
-    buf.index  = 0;
-    if (ioctl(ctx->v4l2_fd, VIDIOC_QBUF, &buf) < 0) {
-        syslog(LOG_ERR, "capture_frame: VIDIOC_QBUF: %s", strerror(errno));
-        goto cleanup;
+        memset(&buf, 0, sizeof(buf));
+        buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        buf.index  = i;
+        if (ioctl(ctx->v4l2_fd, VIDIOC_QBUF, &buf) < 0) {
+            syslog(LOG_ERR, "capture_frame: VIDIOC_QBUF[%d]: %s",
+                   i, strerror(errno));
+            goto cleanup;
+        }
     }
 
     if (ioctl(ctx->v4l2_fd, VIDIOC_STREAMON, &type) < 0) {
@@ -167,7 +176,33 @@ bool capture_frame(struct capture_ctx *ctx, struct capture_frame *frame)
         goto cleanup;
     }
 
-    // Wait for a frame
+    // Discard warm-up frames so auto-exposure settles
+    for (i = 0; i < WARMUP_FRAMES; i++) {
+        pfd.fd     = ctx->v4l2_fd;
+        pfd.events = POLLIN;
+        if (poll(&pfd, 1, POLL_TIMEOUT_MS) <= 0) {
+            syslog(LOG_ERR, "capture_frame: poll timeout on warm-up frame %d", i);
+            ioctl(ctx->v4l2_fd, VIDIOC_STREAMOFF, &type);
+            goto cleanup;
+        }
+        memset(&buf, 0, sizeof(buf));
+        buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        if (ioctl(ctx->v4l2_fd, VIDIOC_DQBUF, &buf) < 0) {
+            syslog(LOG_ERR, "capture_frame: VIDIOC_DQBUF warm-up: %s",
+                   strerror(errno));
+            ioctl(ctx->v4l2_fd, VIDIOC_STREAMOFF, &type);
+            goto cleanup;
+        }
+        if (ioctl(ctx->v4l2_fd, VIDIOC_QBUF, &buf) < 0) {
+            syslog(LOG_ERR, "capture_frame: VIDIOC_QBUF re-queue: %s",
+                   strerror(errno));
+            ioctl(ctx->v4l2_fd, VIDIOC_STREAMOFF, &type);
+            goto cleanup;
+        }
+    }
+
+    // Capture the settled frame
     pfd.fd     = ctx->v4l2_fd;
     pfd.events = POLLIN;
     if (poll(&pfd, 1, POLL_TIMEOUT_MS) <= 0) {
@@ -176,7 +211,6 @@ bool capture_frame(struct capture_ctx *ctx, struct capture_frame *frame)
         goto cleanup;
     }
 
-    // Dequeue filled buffer
     memset(&buf, 0, sizeof(buf));
     buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = V4L2_MEMORY_MMAP;
@@ -188,21 +222,22 @@ bool capture_frame(struct capture_ctx *ctx, struct capture_frame *frame)
 
     ioctl(ctx->v4l2_fd, VIDIOC_STREAMOFF, &type);
 
-    // Copy frame data out of the mmap'd buffer
     frame->data = (unsigned char *)malloc(buf.bytesused);
     if (!frame->data) {
         syslog(LOG_ERR, "capture_frame: malloc failed");
         goto cleanup;
     }
-    memcpy(frame->data, mapped, buf.bytesused);
+    memcpy(frame->data, bufs[buf.index], buf.bytesused);
     frame->size = buf.bytesused;
 
     syslog(LOG_DEBUG, "capture_frame: captured %zu bytes", frame->size);
     success = true;
 
 cleanup:
-    if (mapped != MAP_FAILED)
-        munmap(mapped, buf_length);
+    for (i = 0; i < NUM_BUFS; i++) {
+        if (bufs[i] != MAP_FAILED)
+            munmap(bufs[i], buf_lengths[i]);
+    }
     return success;
 }
 

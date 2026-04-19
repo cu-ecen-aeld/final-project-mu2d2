@@ -58,5 +58,8 @@ IMAGE_INSTALL:append = " opencv-validate"
 # PageSpeak main daemon (button → camera → OCR pipeline)
 IMAGE_INSTALL:append = " pagespeak-daemon"
 
+# PageSpeak preprocessing unit test binary
+IMAGE_INSTALL:append = " pagespeak-daemon-tests"
+
 # Development extras
 EXTRA_IMAGE_FEATURES += "debug-tweaks ssh-server-dropbear"

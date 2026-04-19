@@ -11,6 +11,7 @@ SRC_URI = "file://main.c \
            file://pagespeak_cam.h \
            file://preprocess.cpp \
            file://preprocess.h \
+           file://preprocess_test.cpp \
            file://ocr.h \
            file://ocr_stub.c \
            file://tts.h \
@@ -43,6 +44,17 @@ do_compile() {
         -I${STAGING_INCDIR}/opencv4 \
         -c -o ${S}/preprocess.o ${S}/preprocess.cpp
 
+    # Compile and link preprocess_test binary
+    ${CXX} ${CXXFLAGS} -std=c++11 --sysroot=${STAGING_DIR_TARGET} \
+        -I${STAGING_INCDIR}/opencv4 -I${S} \
+        -c -o ${S}/preprocess_test.o ${S}/preprocess_test.cpp
+    ${CXX} ${LDFLAGS} --sysroot=${STAGING_DIR_TARGET} \
+        -o ${S}/preprocess_test \
+        ${S}/preprocess_test.o \
+        ${S}/preprocess.o \
+        ${S}/capture.o \
+        -L${STAGING_LIBDIR} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lm
+
     # Link with C++ linker to pull in C++ runtime
     ${CXX} ${LDFLAGS} --sysroot=${STAGING_DIR_TARGET} \
         -o ${S}/pagespeak-daemon \
@@ -57,6 +69,7 @@ do_compile() {
 do_install() {
     install -d ${D}${bindir}
     install -m 0755 ${S}/pagespeak-daemon ${D}${bindir}/pagespeak-daemon
+    install -m 0755 ${S}/preprocess_test  ${D}${bindir}/preprocess_test
 
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${WORKDIR}/pagespeak-daemon.service ${D}${systemd_system_unitdir}/
@@ -64,5 +77,8 @@ do_install() {
 
 FILES:${PN} = "${bindir}/pagespeak-daemon"
 FILES:${PN} += "${systemd_system_unitdir}/pagespeak-daemon.service"
+FILES:${PN}-tests = "${bindir}/preprocess_test"
+
+PACKAGES =+ "${PN}-tests"
 
 RDEPENDS:${PN} = "pagespeak-btn pagespeak-cam-driver"
