@@ -3,8 +3,10 @@
  *
  * Usage: ./pagespeak_cam_test [output_file.jpg]
  *
- * Opens the device, queries capabilities, optionally sets resolution,
- * reads one frame, saves it to a file, and closes.
+ * Opens /dev/pagespeak-cam for ioctl config and access control, then
+ * captures one frame directly from the underlying V4L2 device using
+ * standard mmap streaming. The raw device path is retrieved from
+ * PAGESPEAK_CAM_QUERY_CAPS.
  *
  * Compile on target:
  *   gcc -o pagespeak_cam_test pagespeak_cam_test.c
@@ -20,34 +22,36 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <poll.h>
+#include <linux/videodev2.h>
 
 #include "pagespeak_cam.h"
 
-#define DEVICE_PATH "/dev/pagespeak-cam"
-#define DEFAULT_OUTPUT "captured_frame.jpg"
-#define FRAME_BUF_SIZE (2 * 1024 * 1024)  /* 2MB — matches kernel module */
+#define DEVICE_PATH     "/dev/pagespeak-cam"
+#define DEFAULT_OUTPUT  "captured_frame.jpg"
+#define FRAME_BUF_SIZE  (2 * 1024 * 1024)  /* 2MB */
 
-/* V4L2_PIX_FMT_MJPEG fourcc value */
-#define MJPEG_FOURCC 0x47504A4D
+#define MJPEG_FOURCC    0x47504A4D  /* V4L2_PIX_FMT_MJPEG */
 
-static int test_query_caps(int fd)
+static int test_query_caps(int fd, struct pagespeak_cam_caps *caps)
 {
-    struct pagespeak_cam_caps caps;
     int ret;
 
     printf("[TEST] Querying capabilities...\n");
-    ret = ioctl(fd, PAGESPEAK_CAM_QUERY_CAPS, &caps);
+    ret = ioctl(fd, PAGESPEAK_CAM_QUERY_CAPS, caps);
     if (ret < 0) {
         perror("  FAIL: PAGESPEAK_CAM_QUERY_CAPS");
         return -1;
     }
 
-    printf("  Device: %s\n", caps.device_name);
+    printf("  Device: %s\n", caps->device_name);
+    printf("  Raw device: %s\n", caps->raw_device_path);
     printf("  Resolution: %ux%u (min %ux%u, max %ux%u)\n",
-           caps.current_width, caps.current_height,
-           caps.min_width, caps.min_height,
-           caps.max_width, caps.max_height);
-    printf("  Pixel format: 0x%08x\n", caps.current_pixelformat);
+           caps->current_width, caps->current_height,
+           caps->min_width, caps->min_height,
+           caps->max_width, caps->max_height);
+    printf("  Pixel format: 0x%08x\n", caps->current_pixelformat);
     printf("  PASS: capabilities queried\n");
     return 0;
 }
@@ -120,24 +124,116 @@ static int test_concurrent_open(void)
     return 0;
 }
 
-static ssize_t test_read_frame(int fd, void *buf, size_t bufsize)
+/*
+ * Capture one frame from the raw V4L2 device using mmap streaming.
+ * The pagespeak-cam fd must remain open during capture to hold the
+ * exclusive access lock.
+ */
+static ssize_t capture_frame_mmap(const char *raw_dev,
+                                   uint32_t width, uint32_t height,
+                                   uint32_t pixfmt,
+                                   void *out_buf, size_t out_size)
 {
-    ssize_t nread;
+    int vfd = -1;
+    struct v4l2_format fmt;
+    struct v4l2_requestbuffers reqbufs;
+    struct v4l2_buffer buf;
+    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    void *mapped = MAP_FAILED;
+    uint32_t buf_length = 0;
+    ssize_t frame_size = -1;
+    struct pollfd pfd;
 
-    printf("[TEST] Reading frame...\n");
-    nread = read(fd, buf, bufsize);
-    if (nread < 0) {
-        perror("  FAIL: read");
+    printf("[TEST] Capturing frame via V4L2 mmap from %s...\n", raw_dev);
+
+    vfd = open(raw_dev, O_RDWR);
+    if (vfd < 0) {
+        perror("  FAIL: open raw V4L2 device");
         return -1;
     }
 
-    if (nread == 0) {
-        printf("  FAIL: read returned 0 bytes\n");
-        return -1;
+    memset(&fmt, 0, sizeof(fmt));
+    fmt.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    fmt.fmt.pix.width       = width;
+    fmt.fmt.pix.height      = height;
+    fmt.fmt.pix.pixelformat = pixfmt;
+    fmt.fmt.pix.field       = V4L2_FIELD_ANY;
+    if (ioctl(vfd, VIDIOC_S_FMT, &fmt) < 0) {
+        perror("  FAIL: VIDIOC_S_FMT");
+        goto cleanup;
+    }
+    printf("  Format set: %ux%u pixfmt=0x%08x\n",
+           fmt.fmt.pix.width, fmt.fmt.pix.height, fmt.fmt.pix.pixelformat);
+
+    memset(&reqbufs, 0, sizeof(reqbufs));
+    reqbufs.count  = 1;
+    reqbufs.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    reqbufs.memory = V4L2_MEMORY_MMAP;
+    if (ioctl(vfd, VIDIOC_REQBUFS, &reqbufs) < 0) {
+        perror("  FAIL: VIDIOC_REQBUFS");
+        goto cleanup;
     }
 
-    printf("  PASS: read %zd bytes\n", nread);
-    return nread;
+    memset(&buf, 0, sizeof(buf));
+    buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf.memory = V4L2_MEMORY_MMAP;
+    buf.index  = 0;
+    if (ioctl(vfd, VIDIOC_QUERYBUF, &buf) < 0) {
+        perror("  FAIL: VIDIOC_QUERYBUF");
+        goto cleanup;
+    }
+    buf_length = buf.length; /* save before QBUF resets the struct */
+
+    mapped = mmap(NULL, buf_length, PROT_READ | PROT_WRITE,
+                  MAP_SHARED, vfd, buf.m.offset);
+    if (mapped == MAP_FAILED) {
+        perror("  FAIL: mmap");
+        goto cleanup;
+    }
+
+    memset(&buf, 0, sizeof(buf));
+    buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf.memory = V4L2_MEMORY_MMAP;
+    buf.index  = 0;
+    if (ioctl(vfd, VIDIOC_QBUF, &buf) < 0) {
+        perror("  FAIL: VIDIOC_QBUF");
+        goto cleanup;
+    }
+
+    if (ioctl(vfd, VIDIOC_STREAMON, &type) < 0) {
+        perror("  FAIL: VIDIOC_STREAMON");
+        goto cleanup;
+    }
+
+    pfd.fd     = vfd;
+    pfd.events = POLLIN;
+    if (poll(&pfd, 1, 5000) <= 0) {
+        printf("  FAIL: poll timeout waiting for frame\n");
+        ioctl(vfd, VIDIOC_STREAMOFF, &type);
+        goto cleanup;
+    }
+
+    memset(&buf, 0, sizeof(buf));
+    buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf.memory = V4L2_MEMORY_MMAP;
+    if (ioctl(vfd, VIDIOC_DQBUF, &buf) < 0) {
+        perror("  FAIL: VIDIOC_DQBUF");
+        ioctl(vfd, VIDIOC_STREAMOFF, &type);
+        goto cleanup;
+    }
+
+    frame_size = (buf.bytesused < out_size) ? buf.bytesused : out_size;
+    memcpy(out_buf, mapped, frame_size);
+    printf("  PASS: captured %zd bytes\n", frame_size);
+
+    ioctl(vfd, VIDIOC_STREAMOFF, &type);
+
+cleanup:
+    if (mapped != MAP_FAILED)
+        munmap(mapped, buf_length);
+    if (vfd >= 0)
+        close(vfd);
+    return frame_size;
 }
 
 static int save_frame(const char *path, const void *data, size_t size)
@@ -165,6 +261,7 @@ static int save_frame(const char *path, const void *data, size_t size)
 int main(int argc, char *argv[])
 {
     const char *output_path = (argc > 1) ? argv[1] : DEFAULT_OUTPUT;
+    struct pagespeak_cam_caps caps;
     void *frame_buf;
     ssize_t frame_size;
     int fd;
@@ -179,8 +276,8 @@ int main(int argc, char *argv[])
         failures++;
     printf("\n");
 
-    /* Test 2: Open, query caps, set resolution, set pixfmt */
-    printf("[TEST] Opening %s for ioctl tests...\n", DEVICE_PATH);
+    /* Test 2: Open device */
+    printf("[TEST] Opening %s...\n", DEVICE_PATH);
     fd = open(DEVICE_PATH, O_RDWR);
     if (fd < 0) {
         perror("  FAIL: open");
@@ -189,33 +286,34 @@ int main(int argc, char *argv[])
     }
     printf("  PASS: device opened (fd=%d)\n\n", fd);
 
-    /* Test 3: Query capabilities */
-    if (test_query_caps(fd) < 0)
+    /* Test 3: Query capabilities (also retrieves raw_device_path) */
+    memset(&caps, 0, sizeof(caps));
+    if (test_query_caps(fd, &caps) < 0)
         failures++;
     printf("\n");
 
-    /* Test 4: Set resolution (stored for next open's camera config) */
+    /* Test 4: Set resolution */
     if (test_set_resolution(fd, 640, 480) < 0)
         failures++;
     printf("\n");
 
-    /* Test 5: Set pixel format (MJPEG) */
+    /* Test 5: Set pixel format */
     if (test_set_pixfmt(fd, MJPEG_FOURCC) < 0)
         failures++;
     printf("\n");
 
-    /* Verify settings were stored via QUERY_CAPS */
+    /* Test 6: Verify settings were stored */
     printf("[TEST] Verifying settings via QUERY_CAPS...\n");
     {
-        struct pagespeak_cam_caps caps;
-        if (ioctl(fd, PAGESPEAK_CAM_QUERY_CAPS, &caps) == 0) {
-            if (caps.current_width == 640 && caps.current_height == 480 &&
-                caps.current_pixelformat == MJPEG_FOURCC) {
+        struct pagespeak_cam_caps verify;
+        if (ioctl(fd, PAGESPEAK_CAM_QUERY_CAPS, &verify) == 0) {
+            if (verify.current_width == 640 && verify.current_height == 480 &&
+                verify.current_pixelformat == MJPEG_FOURCC) {
                 printf("  PASS: settings match expected values\n");
             } else {
                 printf("  FAIL: settings mismatch (%ux%u fmt=0x%08x)\n",
-                       caps.current_width, caps.current_height,
-                       caps.current_pixelformat);
+                       verify.current_width, verify.current_height,
+                       verify.current_pixelformat);
                 failures++;
             }
         } else {
@@ -225,19 +323,10 @@ int main(int argc, char *argv[])
     }
     printf("\n");
 
-    /* Close and reopen for frame capture (open() applies stored settings) */
-    close(fd);
-
-    /* Test 6: Read a frame */
-    printf("[TEST] Opening %s for frame capture...\n", DEVICE_PATH);
-    fd = open(DEVICE_PATH, O_RDWR);
-    if (fd < 0) {
-        perror("  FAIL: open for capture");
-        printf("\n=== RESULT: FAIL (could not open device) ===\n");
-        return 1;
-    }
-    printf("  PASS: device opened (fd=%d)\n\n", fd);
-
+    /*
+     * Test 7: Capture a frame via V4L2 mmap on the raw device.
+     * /dev/pagespeak-cam remains open to hold the exclusive access lock.
+     */
     frame_buf = malloc(FRAME_BUF_SIZE);
     if (!frame_buf) {
         perror("malloc");
@@ -245,20 +334,19 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    frame_size = test_read_frame(fd, frame_buf, FRAME_BUF_SIZE);
+    frame_size = capture_frame_mmap(caps.raw_device_path,
+                                    640, 480, MJPEG_FOURCC,
+                                    frame_buf, FRAME_BUF_SIZE);
     if (frame_size > 0) {
-        /* Test 5: Save frame to file */
         if (save_frame(output_path, frame_buf, frame_size) < 0)
             failures++;
 
-        /* Basic JPEG validation: check for JPEG SOI marker */
+        printf("\n[TEST] JPEG validation...\n");
         if (frame_size >= 2) {
             unsigned char *data = (unsigned char *)frame_buf;
-            if (data[0] == 0xFF && data[1] == 0xD8) {
-                printf("\n[TEST] JPEG validation...\n");
+            if (data[0] == 0xFF && data[1] == 0xD8)
                 printf("  PASS: valid JPEG SOI marker (0xFFD8)\n");
-            } else {
-                printf("\n[TEST] JPEG validation...\n");
+            else {
                 printf("  WARN: no JPEG SOI marker (got 0x%02x%02x)\n",
                        data[0], data[1]);
                 failures++;
@@ -271,7 +359,7 @@ int main(int argc, char *argv[])
 
     free(frame_buf);
 
-    /* Test 6: Close device */
+    /* Test 8: Close device */
     printf("[TEST] Closing device...\n");
     if (close(fd) < 0) {
         perror("  FAIL: close");
@@ -284,3 +372,4 @@ int main(int argc, char *argv[])
            failures == 0 ? "ALL PASS" : "SOME FAILURES", failures);
     return failures == 0 ? 0 : 1;
 }
+

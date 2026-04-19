@@ -45,6 +45,7 @@ struct pagespeak_cam_caps {
     uint32_t current_height;
     uint32_t current_pixelformat;
     char     device_name[32];
+    char     raw_device_path[64]; /* underlying V4L2 device for userspace mmap capture */
 };
 
 /* ioctl commands */
