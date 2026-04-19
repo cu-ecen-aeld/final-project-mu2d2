@@ -68,7 +68,7 @@ REQUIRED_SOURCES=(
     "capture.c"
     "capture.h"
     "preprocess.h"
-    "preprocess_stub.c"
+    "preprocess.cpp"
     "ocr.h"
     "ocr_stub.c"
     "tts.h"
@@ -185,21 +185,34 @@ fi
 # Test 8: Source files compile (gcc -fsyntax-only)
 # ---------------------------------------------------------------------------
 echo ""
-echo "Test 8: Source files pass gcc -fsyntax-only"
+echo "Test 8: Source files pass gcc/g++ -fsyntax-only"
 if command -v gcc >/dev/null 2>&1; then
     if [[ "$ALL_SOURCES_PRESENT" == "true" ]]; then
         SYNTAX_FAILED=false
-        C_SOURCES=("main.c" "capture.c" "preprocess_stub.c" "ocr_stub.c" "tts_stub.c")
+        C_SOURCES=("main.c" "capture.c" "ocr_stub.c" "tts_stub.c")
         for src in "${C_SOURCES[@]}"; do
             if gcc -fsyntax-only -I"$SRC_DIR" "$SRC_DIR/$src" 2>/dev/null; then
                 pass "Syntax OK: $src"
             else
-                # Print errors to help diagnose failures
                 gcc -fsyntax-only -I"$SRC_DIR" "$SRC_DIR/$src" 2>&1 | head -20 || true
                 fail "Syntax error in: $src"
                 SYNTAX_FAILED=true
             fi
         done
+
+        # preprocess.cpp requires OpenCV headers, skip syntax check if not available
+        if command -v g++ >/dev/null 2>&1 && pkg-config --exists opencv4 2>/dev/null; then
+            OPENCV_CFLAGS=$(pkg-config --cflags opencv4)
+            if g++ -fsyntax-only -std=c++11 $OPENCV_CFLAGS -I"$SRC_DIR" "$SRC_DIR/preprocess.cpp" 2>/dev/null; then
+                pass "Syntax OK: preprocess.cpp"
+            else
+                g++ -fsyntax-only -std=c++11 $OPENCV_CFLAGS -I"$SRC_DIR" "$SRC_DIR/preprocess.cpp" 2>&1 | head -20 || true
+                fail "Syntax error in: preprocess.cpp"
+                SYNTAX_FAILED=true
+            fi
+        else
+            skip "OpenCV4 not available in CI: skipping preprocess.cpp syntax check"
+        fi
     else
         skip "Source files missing — skipping syntax check"
     fi
@@ -326,7 +339,7 @@ if [[ -f "$RECIPE_FILE" ]]; then
         "capture.c"
         "capture.h"
         "preprocess.h"
-        "preprocess_stub.c"
+        "preprocess.cpp"
         "ocr.h"
         "ocr_stub.c"
         "tts.h"

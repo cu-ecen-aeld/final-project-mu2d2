@@ -3,10 +3,11 @@ FROM ubuntu:22.04
 # Avoid interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install gcc and libc6-dev for -fsyntax-only checks
+# Install gcc/g++ and libc6-dev for -fsyntax-only checks
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         gcc \
+        g++ \
         libc6-dev && \
     rm -rf /var/lib/apt/lists/*
 
