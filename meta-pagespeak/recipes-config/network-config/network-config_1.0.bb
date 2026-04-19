@@ -17,5 +17,3 @@ do_install() {
 }
 
 FILES:${PN} = "${sysconfdir}/systemd/network/10-eth0.network"
-
-RRECOMMENDS:${PN} = "systemd-networkd"
