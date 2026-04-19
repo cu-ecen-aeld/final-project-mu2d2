@@ -5,7 +5,7 @@
  *
  * Pipeline: button press → capture frame → preprocess → OCR → TTS
  *
- * Currently preprocessing, OCR, and TTS are stubs that log their actions.
+ * Pipeline is fully implemented: capture → preprocess → OCR → espeak TTS.
  */
 
 #include <stdio.h>
@@ -77,27 +77,24 @@ static bool run_pipeline(void)
     capture_close(cam_ctx);
     syslog(LOG_INFO, "pipeline: captured %zu byte frame", frame.size);
 
-    /* Step 2: Preprocess image (STUB) */
+    /* Step 2: Preprocess image */
     if (!preprocess_image(&frame, &preprocessed)) {
         syslog(LOG_ERR, "pipeline: preprocessing failed");
         goto cleanup;
     }
 
-    /* Step 3: Run OCR (STUB) */
+    /* Step 3: Run OCR */
     if (!ocr_extract(&preprocessed, &text)) {
         syslog(LOG_ERR, "pipeline: OCR failed");
         goto cleanup;
     }
 
-    /* Step 4: Speak text via TTS (STUB) */
-    if (text && text[0]) {
-        syslog(LOG_INFO, "pipeline: extracted text (%zu chars)", strlen(text));
-        if (!tts_speak(text)) {
-            syslog(LOG_ERR, "pipeline: TTS failed");
-            goto cleanup;
-        }
-    } else {
-        syslog(LOG_INFO, "pipeline: no text extracted");
+    /* Step 4: Speak text (empty → "no text detected" handled by tts_speak) */
+    syslog(LOG_INFO, "pipeline: extracted %zu chars, speaking",
+           text ? strlen(text) : (size_t)0);
+    if (!tts_speak(text ? text : "")) {
+        syslog(LOG_ERR, "pipeline: TTS failed");
+        goto cleanup;
     }
 
     success = true;
