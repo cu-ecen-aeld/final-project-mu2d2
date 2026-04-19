@@ -189,11 +189,16 @@ static void test_large_frame(void)
 static void test_free(void)
 {
     struct preprocess_result result;
-    unsigned char dummy_data[4] = {0};
+    unsigned char *heap_data = (unsigned char *)malloc(4);
 
     printf("[TEST] preprocess_free\n");
 
-    result.data   = dummy_data;
+    if (!heap_data) {
+        printf("  SKIP: malloc failed\n");
+        return;
+    }
+
+    result.data   = heap_data;
     result.size   = 4;
     result.width  = 2;
     result.height = 2;
