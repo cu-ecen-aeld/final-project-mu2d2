@@ -15,6 +15,7 @@ SRC_URI = "file://main.c \
            file://ocr.cpp \
            file://ocr.h \
            file://ocr_test.cpp \
+           file://ocr_sample.cpp \
            file://tts.h \
            file://tts_stub.c \
            file://pagespeak-daemon.service \
@@ -69,6 +70,19 @@ do_compile() {
         -L${STAGING_LIBDIR} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs \
         -ltesseract -lm
 
+    # Compile and link ocr_sample tool (JPEG file → preprocess → OCR → stdout)
+    ${CXX} ${CXXFLAGS} -std=c++11 --sysroot=${STAGING_DIR_TARGET} \
+        -I${STAGING_INCDIR}/opencv4 -I${S} \
+        -c -o ${S}/ocr_sample.o ${S}/ocr_sample.cpp
+    ${CXX} ${LDFLAGS} --sysroot=${STAGING_DIR_TARGET} \
+        -o ${S}/ocr_sample \
+        ${S}/ocr_sample.o \
+        ${S}/ocr.o \
+        ${S}/preprocess.o \
+        ${S}/capture.o \
+        -L${STAGING_LIBDIR} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs \
+        -ltesseract -lm
+
     # Link pagespeak-daemon
     ${CXX} ${LDFLAGS} --sysroot=${STAGING_DIR_TARGET} \
         -o ${S}/pagespeak-daemon \
@@ -86,6 +100,7 @@ do_install() {
     install -m 0755 ${S}/pagespeak-daemon ${D}${bindir}/pagespeak-daemon
     install -m 0755 ${S}/preprocess_test  ${D}${bindir}/preprocess_test
     install -m 0755 ${S}/ocr_test         ${D}${bindir}/ocr_test
+    install -m 0755 ${S}/ocr_sample       ${D}${bindir}/ocr_sample
 
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${WORKDIR}/pagespeak-daemon.service ${D}${systemd_system_unitdir}/
@@ -93,7 +108,7 @@ do_install() {
 
 FILES:${PN} = "${bindir}/pagespeak-daemon"
 FILES:${PN} += "${systemd_system_unitdir}/pagespeak-daemon.service"
-FILES:${PN}-tests = "${bindir}/preprocess_test ${bindir}/ocr_test"
+FILES:${PN}-tests = "${bindir}/preprocess_test ${bindir}/ocr_test ${bindir}/ocr_sample"
 
 PACKAGES =+ "${PN}-tests"
 
