@@ -1,3 +1,6 @@
 # Yocto build artifacts (created by setup-build.sh)
 /build/
 /sources/
+
+# Built images
+*.rpi-sdimg
