@@ -22,8 +22,8 @@ IMAGE_INSTALL:append = " openssh-sftp-server nano"
 # systemd-networkd is part of the systemd package, not a separate install target
 IMAGE_INSTALL:append = " network-config"
 
-# Ensure all built kernel modules are installed
-IMAGE_INSTALL:append = " kernel-modules"
+# Ensure all built kernel modules are installed, plus kmod for modprobe/insmod
+IMAGE_INSTALL:append = " kernel-modules kmod"
 
 # udev rules for stable camera device symlink
 IMAGE_INSTALL:append = " pagespeak-udev-rules"
@@ -32,7 +32,7 @@ IMAGE_INSTALL:append = " pagespeak-udev-rules"
 IMAGE_INSTALL:append = " pagespeak-cam-driver"
 
 # GPIO button IRQ driver and userspace validation test binary
-IMAGE_INSTALL:append = " pagespeak-btn"
+IMAGE_INSTALL:append = " pagespeak-btn pagespeak-btn-test"
 
 # OpenCV — computer vision library (core + imgproc for Sprint 2 OCR pipeline)
 IMAGE_INSTALL:append = " opencv"
