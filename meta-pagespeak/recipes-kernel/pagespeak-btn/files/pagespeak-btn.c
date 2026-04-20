@@ -24,25 +24,69 @@
 #include <linux/wait.h>
 #include <linux/spinlock.h>
 #include <linux/ktime.h>
+#include <linux/of.h>
 
 // Driver and device identifiers used in printk, cdev, and udev
 #define DRIVER_NAME  "pagespeak-btn"
 #define DEVICE_NAME  "pagespeak-btn"
 #define CLASS_NAME   "pagespeak"
 
-// On RPi5, the RP1 GPIO controller (gpiochip4) has a global base offset of 399.
-// BCM GPIO 17 (physical pin 11) maps to global GPIO 416 (399 + 17).
-// The legacy integer GPIO API requires the global number, not the BCM number.
-static int gpio_pin = 416;
+// BCM pin number for the button (physical pin 11 on 40-pin header)
+#define BCM_PIN 17
+
+// GPIO chip base offsets for different Raspberry Pi models
+#define RPI3_4_GPIO_BASE  0    // gpiochip0: GPIOs 0-53
+#define RPI5_GPIO_BASE    399  // gpiochip4 (RP1): GPIOs 399-452
+
+// Global GPIO number, computed at init based on platform detection
+static int gpio_pin = -1;
 
 // Default debounce window in milliseconds
 static int debounce_ms = 50;
 
-module_param(gpio_pin,     int, 0444);
+// Allow manual override of gpio_pin if auto-detection fails or user wants different pin
+static int gpio_pin_override = -1;
+
+module_param_named(gpio_pin, gpio_pin_override, int, 0444);
 module_param(debounce_ms,  int, 0444);
 
-MODULE_PARM_DESC(gpio_pin,    "GPIO BCM pin number for the capture button (default 17)");
+MODULE_PARM_DESC(gpio_pin,    "Override global GPIO number (default: auto-detect based on platform)");
 MODULE_PARM_DESC(debounce_ms, "Software debounce window in milliseconds (default 50)");
+
+/**
+ * @brief Detect Raspberry Pi model and compute the global GPIO number.
+ *        RPi5 uses the RP1 GPIO controller with base 399.
+ *        RPi3/4 use the BCM GPIO controller with base 0.
+ *
+ * @return Global GPIO number for BCM_PIN on this platform
+ */
+static int detect_gpio_pin(void)
+{
+    // Check for RPi5 first (RP1 GPIO controller)
+    if (of_machine_is_compatible("raspberrypi,5-model-b")) {
+        printk(KERN_INFO DRIVER_NAME ": detected Raspberry Pi 5\n");
+        return RPI5_GPIO_BASE + BCM_PIN;
+    }
+
+    // RPi4 variants
+    if (of_machine_is_compatible("raspberrypi,4-model-b") ||
+        of_machine_is_compatible("raspberrypi,4-compute-module")) {
+        printk(KERN_INFO DRIVER_NAME ": detected Raspberry Pi 4\n");
+        return RPI3_4_GPIO_BASE + BCM_PIN;
+    }
+
+    // RPi3 variants
+    if (of_machine_is_compatible("raspberrypi,3-model-b") ||
+        of_machine_is_compatible("raspberrypi,3-model-b-plus") ||
+        of_machine_is_compatible("raspberrypi,3-compute-module")) {
+        printk(KERN_INFO DRIVER_NAME ": detected Raspberry Pi 3\n");
+        return RPI3_4_GPIO_BASE + BCM_PIN;
+    }
+
+    // Fallback: assume RPi3/4-style GPIO base
+    printk(KERN_WARNING DRIVER_NAME ": unknown platform, assuming GPIO base 0\n");
+    return RPI3_4_GPIO_BASE + BCM_PIN;
+}
 
 /**
  * @brief Event structure written to userspace via read().
@@ -220,6 +264,14 @@ static int __init pagespeak_btn_init(void)
     // Initialize the spinlock and set the debounce reference time to zero
     spin_lock_init(&btn_lock);
     last_irq_time = ktime_set(0, 0);
+
+    // Determine GPIO pin: use override if provided, otherwise auto-detect
+    if (gpio_pin_override >= 0) {
+        gpio_pin = gpio_pin_override;
+        printk(KERN_INFO DRIVER_NAME ": using gpio_pin override: %d\n", gpio_pin);
+    } else {
+        gpio_pin = detect_gpio_pin();
+    }
 
     // Request exclusive ownership of the GPIO pin as a digital input
     ret = gpio_request_one(gpio_pin, GPIOF_IN, DRIVER_NAME);
