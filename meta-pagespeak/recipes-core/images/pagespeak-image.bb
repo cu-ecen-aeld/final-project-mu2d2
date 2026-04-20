@@ -21,7 +21,6 @@ IMAGE_INSTALL:append = " openssh-sftp-server nano"
 # Static IP via systemd-networkd for direct ethernet connection (192.168.10.2/24)
 # systemd-networkd is part of the systemd package, not a separate install target
 IMAGE_INSTALL:append = " network-config"
-DISTRO_FEATURES:append = " systemd"
 
 # Ensure all built kernel modules are installed
 IMAGE_INSTALL:append = " kernel-modules"
